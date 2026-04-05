@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Timestamp } from 'firebase/firestore';
 import type { BlogPost } from '@/lib/types';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { ArrowRight } from 'lucide-react';
 
@@ -14,7 +13,10 @@ interface BlogCardProps {
 }
 
 export function BlogCard({ post }: BlogCardProps) {
-  const displayDate = post.date instanceof Timestamp ? post.date.toDate().toLocaleDateString() : post.date;
+  const resolvedDate = post.date instanceof Timestamp ? post.date.toDate() : new Date(post.date);
+  const displayDate = Number.isNaN(resolvedDate.getTime())
+    ? post.date
+    : new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long' }).format(resolvedDate);
   const hasImage = Boolean(post.image && post.image.trim() !== '');
   const imageSrc = hasImage ? post.image : 'https://cdn.neupgroup.com/p3happymountainnepal/logo.png';
 
@@ -37,19 +39,6 @@ export function BlogCard({ post }: BlogCardProps) {
       </CardHeader>
 
       <CardContent className="p-4 flex-grow">
-        {/* Tags - clickable to filter */}
-        {post.tags && post.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2">
-            {post.tags.map(tag => (
-              <Link key={tag} href={`/blog?tags=${encodeURIComponent(tag)}`}>
-                <Badge variant="secondary" className="hover:bg-primary/20 cursor-pointer">
-                  {tag}
-                </Badge>
-              </Link>
-            ))}
-          </div>
-        )}
-
         {/* Clickable Title */}
         <Link href={`/blog/${post.slug}`}>
           <CardTitle className="text-lg font-bold !font-headline mb-2 leading-tight hover:text-primary transition-colors cursor-pointer">
