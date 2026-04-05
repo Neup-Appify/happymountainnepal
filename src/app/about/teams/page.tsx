@@ -3,32 +3,24 @@
 
 import { TeamMemberCard } from '@/components/TeamMemberCard';
 import Link from 'next/link';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, orderBy as firestoreOrderBy } from 'firebase/firestore';
+import { getTeamMembers, getTeamGroups } from '@/lib/db/team';
 import type { TeamMember, TeamGroup } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useEffect } from 'react';
 
 export default function TeamsPage() {
-  const firestore = useFirestore();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamGroups, setTeamGroups] = useState<TeamGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!firestore) return;
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Fetch team members
-        const membersQuery = collection(firestore, 'teamMembers');
-        const membersSnapshot = await getDocs(membersQuery);
-        const members = membersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamMember));
-
-        // Fetch team groups
-        const groupsQuery = query(collection(firestore, 'teamGroups'), firestoreOrderBy('orderIndex', 'asc'));
-        const groupsSnapshot = await getDocs(groupsQuery);
-        const groups = groupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamGroup));
+        const [members, groups] = await Promise.all([
+          getTeamMembers(),
+          getTeamGroups(),
+        ]);
 
         setTeamMembers(members);
         setTeamGroups(groups);
@@ -39,7 +31,7 @@ export default function TeamsPage() {
       }
     };
     fetchData();
-  }, [firestore]);
+  }, []);
 
   const getMembersInGroup = (groupId: string | null) => {
     return teamMembers

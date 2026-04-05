@@ -2,30 +2,28 @@
 'use client';
 import { TeamMemberCard } from '@/components/TeamMemberCard';
 import Image from 'next/image';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { getTeamMembers } from '@/lib/db/team';
 import type { TeamMember } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { AdminPageControl } from '@/components/admin/AdminPageControl';
 
 export default function AboutPage() {
-  const firestore = useFirestore();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!firestore) return;
     const fetchMembers = async () => {
       setIsLoading(true);
-      const membersQuery = collection(firestore, 'teamMembers');
-      const querySnapshot = await getDocs(membersQuery);
-      const members = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamMember));
-      setTeamMembers(members);
-      setIsLoading(false);
+      try {
+        const members = await getTeamMembers();
+        setTeamMembers(members);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchMembers();
-  }, [firestore]);
+  }, []);
 
   const jsonLdSchema = {
     "@context": "https://schema.org",

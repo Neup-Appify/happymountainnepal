@@ -1,132 +1,222 @@
 
 'use server';
 
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, updateDoc, deleteDoc, where, getDoc, limit } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
+import { v4 as uuidv4 } from 'uuid';
 import type { TeamMember, TeamGroup } from '@/lib/types';
-import { slugify } from "@/lib/utils";
-import { logError } from './errors';
+import { slugify } from '@/lib/utils';
+import { db } from './sqlite';
 
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as T : null;
+type TeamMemberRow = {
+    id: string;
+    slug: string;
+    name: string;
+    role: string;
+    bio: string;
+    image: string;
+    groupId: string | null;
+    orderIndex: number | null;
+    shortDescription: string | null;
+    story: string | null;
+    gallery: string | null;
+    socials: string | null;
+};
+
+type TeamGroupRow = {
+    id: string;
+    name: string;
+    description: string | null;
+    orderIndex: number;
+};
+
+function toTeamMember(row: TeamMemberRow): TeamMember {
+    return {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        role: row.role,
+        bio: row.bio,
+        image: row.image,
+        groupId: row.groupId ?? undefined,
+        orderIndex: row.orderIndex ?? undefined,
+        shortDescription: row.shortDescription ?? undefined,
+        story: row.story ?? undefined,
+        gallery: row.gallery ? JSON.parse(row.gallery) : undefined,
+        socials: row.socials ? JSON.parse(row.socials) : undefined,
+    };
 }
 
-async function getDocBySlug<T>(collectionName: string, slug: string): Promise<T | null> {
-    if (!firestore) return null;
-    const q = query(collection(firestore, collectionName), where('slug', '==', slug), limit(1));
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) return null;
-    const docSnap = querySnapshot.docs[0];
-    return { id: docSnap.id, ...docSnap.data() } as T;
+function toTeamGroup(row: TeamGroupRow): TeamGroup {
+    return {
+        id: row.id,
+        name: row.name,
+        description: row.description ?? undefined,
+        orderIndex: row.orderIndex,
+    };
 }
 
 export async function addTeamMember(data: Omit<TeamMember, 'id' | 'slug'>) {
-    if (!firestore) throw new Error("Database not available.");
+    const id = uuidv4();
     const slug = slugify(data.name);
-    const newMember = { ...data, slug };
-    await addDoc(collection(firestore, 'teamMembers'), newMember);
+    let orderIndex = data.orderIndex ?? 0;
+
+    if (data.groupId) {
+        const result = db
+            .prepare('SELECT COUNT(*) as count FROM teamMembers WHERE groupId = ?')
+            .get(data.groupId) as { count: number };
+        orderIndex = data.orderIndex ?? result.count;
+    }
+
+    db.prepare(`
+        INSERT INTO teamMembers (id, slug, name, role, bio, image, groupId, orderIndex, shortDescription, story, gallery, socials)
+        VALUES (@id, @slug, @name, @role, @bio, @image, @groupId, @orderIndex, @shortDescription, @story, @gallery, @socials)
+    `).run({
+        id,
+        slug,
+        name: data.name,
+        role: data.role,
+        bio: data.bio,
+        image: data.image,
+        groupId: data.groupId ?? null,
+        orderIndex,
+        shortDescription: data.shortDescription ?? null,
+        story: data.story ?? null,
+        gallery: JSON.stringify(data.gallery ?? []),
+        socials: JSON.stringify(data.socials ?? {}),
+    });
+
+    return id;
 }
 
 export async function updateTeamMember(id: string, data: Partial<Omit<TeamMember, 'id' | 'slug'>>) {
-    if (!firestore) throw new Error("Database not available.");
-    const slug = slugify(data.name || '');
-    const docRef = doc(firestore, 'teamMembers', id);
-    const currentDoc = await getDoc(docRef);
-    const currentData = currentDoc.data() as TeamMember | undefined;
-    let finalData: Partial<TeamMember> = { ...data, slug };
+    const current = await getTeamMemberById(id);
+    if (!current) {
+        throw new Error('Team member not found.');
+    }
 
-    if (data.groupId !== undefined && data.groupId !== currentData?.groupId) {
-        if (data.groupId === null) {
-            finalData.orderIndex = 0;
+    const merged: TeamMember = {
+        ...current,
+        ...data,
+        slug: data.name ? slugify(data.name) : current.slug,
+    };
+
+    if (data.groupId !== undefined && data.groupId !== current.groupId && data.orderIndex === undefined) {
+        if (!data.groupId) {
+            merged.orderIndex = 0;
         } else {
-            const membersInNewGroupQuery = query(
-                collection(firestore, 'teamMembers'),
-                where('groupId', '==', data.groupId)
-            );
-            const snapshot = await getDocs(membersInNewGroupQuery);
-            finalData.orderIndex = snapshot.size;
+            const result = db
+                .prepare('SELECT COUNT(*) as count FROM teamMembers WHERE groupId = ?')
+                .get(data.groupId) as { count: number };
+            merged.orderIndex = result.count;
         }
     }
-    await updateDoc(docRef, finalData);
+
+    db.prepare(`
+        UPDATE teamMembers
+        SET slug = @slug,
+            name = @name,
+            role = @role,
+            bio = @bio,
+            image = @image,
+            groupId = @groupId,
+            orderIndex = @orderIndex,
+            shortDescription = @shortDescription,
+            story = @story,
+            gallery = @gallery,
+            socials = @socials
+        WHERE id = @id
+    `).run({
+        id,
+        slug: merged.slug,
+        name: merged.name,
+        role: merged.role,
+        bio: merged.bio,
+        image: merged.image,
+        groupId: merged.groupId ?? null,
+        orderIndex: merged.orderIndex ?? null,
+        shortDescription: merged.shortDescription ?? null,
+        story: merged.story ?? null,
+        gallery: JSON.stringify(merged.gallery ?? []),
+        socials: JSON.stringify(merged.socials ?? {}),
+    });
 }
 
 export async function deleteTeamMember(id: string) {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'teamMembers', id);
-    await deleteDoc(docRef);
+    db.prepare('DELETE FROM teamMembers WHERE id = ?').run(id);
 }
 
 export async function getTeamMemberById(id: string): Promise<TeamMember | null> {
-    return getDocById<TeamMember>('teamMembers', id);
+    const row = db.prepare('SELECT * FROM teamMembers WHERE id = ?').get(id) as TeamMemberRow | undefined;
+    return row ? toTeamMember(row) : null;
 }
 
 export async function getTeamMemberBySlug(slug: string): Promise<TeamMember | null> {
-    return getDocBySlug<TeamMember>('teamMembers', slug);
+    const row = db.prepare('SELECT * FROM teamMembers WHERE slug = ? LIMIT 1').get(slug) as TeamMemberRow | undefined;
+    return row ? toTeamMember(row) : null;
 }
 
 export async function getTeamMembers(): Promise<TeamMember[]> {
-    if (!firestore) return [];
-    const teamMembersRef = collection(firestore, 'teamMembers');
-    const q = query(teamMembersRef);
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamMember));
+    const rows = db.prepare('SELECT * FROM teamMembers ORDER BY COALESCE(orderIndex, 999999) ASC, name ASC').all() as TeamMemberRow[];
+    return rows.map(toTeamMember);
 }
 
 export async function createTeamGroup(data: Omit<TeamGroup, 'id'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = await addDoc(collection(firestore, 'teamGroups'), data);
-    return docRef.id;
+    const id = uuidv4();
+    db.prepare('INSERT INTO teamGroups (id, name, description, orderIndex) VALUES (?, ?, ?, ?)')
+        .run(id, data.name, data.description ?? null, data.orderIndex);
+    return id;
 }
 
 export async function updateTeamGroup(id: string, data: Partial<Omit<TeamGroup, 'id'>>): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'teamGroups', id);
-    await updateDoc(docRef, data);
+    const current = db.prepare('SELECT * FROM teamGroups WHERE id = ?').get(id) as TeamGroupRow | undefined;
+    if (!current) {
+        throw new Error('Team group not found.');
+    }
+
+    db.prepare('UPDATE teamGroups SET name = ?, description = ?, orderIndex = ? WHERE id = ?')
+        .run(
+            data.name ?? current.name,
+            data.description ?? current.description,
+            data.orderIndex ?? current.orderIndex,
+            id
+        );
 }
 
 export async function deleteTeamGroup(id: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const membersRef = collection(firestore, 'teamMembers');
-    const q = query(membersRef, where('groupId', '==', id));
-    const querySnapshot = await getDocs(q);
-    const updatePromises = querySnapshot.docs.map(doc =>
-        updateDoc(doc.ref, { groupId: null, orderIndex: null })
-    );
-    await Promise.all(updatePromises);
-    await deleteDoc(doc(firestore, 'teamGroups', id));
+    const trx = db.transaction((groupId: string) => {
+        db.prepare('UPDATE teamMembers SET groupId = NULL, orderIndex = NULL WHERE groupId = ?').run(groupId);
+        db.prepare('DELETE FROM teamGroups WHERE id = ?').run(groupId);
+    });
+
+    trx(id);
 }
 
 export async function getTeamGroups(): Promise<TeamGroup[]> {
-    if (!firestore) return [];
-    const groupsRef = collection(firestore, 'teamGroups');
-    const q = query(groupsRef, orderBy('orderIndex', 'asc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamGroup));
+    const rows = db.prepare('SELECT * FROM teamGroups ORDER BY orderIndex ASC').all() as TeamGroupRow[];
+    return rows.map(toTeamGroup);
 }
 
 export async function updateTeamMemberPosition(id: string, groupId: string | null, orderIndex: number): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'teamMembers', id);
-    await updateDoc(docRef, { groupId, orderIndex });
+    db.prepare('UPDATE teamMembers SET groupId = ?, orderIndex = ? WHERE id = ?').run(groupId, orderIndex, id);
 }
 
 export async function batchUpdateTeamMemberPositions(updates: { id: string; groupId: string | null; orderIndex: number }[]): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const updatePromises = updates.map(({ id, groupId, orderIndex }) => {
-        const docRef = doc(firestore, 'teamMembers', id);
-        return updateDoc(docRef, { groupId, orderIndex });
+    const trx = db.transaction((items: { id: string; groupId: string | null; orderIndex: number }[]) => {
+        const stmt = db.prepare('UPDATE teamMembers SET groupId = ?, orderIndex = ? WHERE id = ?');
+        for (const item of items) {
+            stmt.run(item.groupId, item.orderIndex, item.id);
+        }
     });
-    await Promise.all(updatePromises);
+
+    trx(updates);
 }
 
 export async function batchUpdateTeamGroupOrder(updates: { id: string; orderIndex: number }[]): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const updatePromises = updates.map(({ id, orderIndex }) => {
-        const docRef = doc(firestore, 'teamGroups', id);
-        return updateDoc(docRef, { orderIndex });
+    const trx = db.transaction((items: { id: string; orderIndex: number }[]) => {
+        const stmt = db.prepare('UPDATE teamGroups SET orderIndex = ? WHERE id = ?');
+        for (const item of items) {
+            stmt.run(item.orderIndex, item.id);
+        }
     });
-    await Promise.all(updatePromises);
+
+    trx(updates);
 }

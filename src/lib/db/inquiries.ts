@@ -1,15 +1,15 @@
 
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
+import { v4 as uuidv4 } from 'uuid';
 import type { CustomizeTripInput } from "@/ai/flows/customize-trip-flow";
 import { logError } from './errors';
+import { db } from './sqlite';
 
 // This is a union type to represent both kinds of inquiries
 export type Inquiry = {
     id: string;
-    createdAt: Timestamp | string; // Allow string for serialized version
+    createdAt: string;
     type: 'customization' | 'contact' | 'booking';
     page?: string;
     temporary_id?: string;
@@ -20,13 +20,24 @@ export type Inquiry = {
 
 
 export async function saveInquiry(inquiryData: Omit<Inquiry, 'id' | 'createdAt'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = await addDoc(collection(firestore, 'inquiries'), {
-            ...inquiryData,
-            createdAt: serverTimestamp(),
+        const id = uuidv4();
+        const createdAt = new Date().toISOString();
+
+        db.prepare(`
+            INSERT INTO inquiries (id, type, page, temporary_id, conversation, data, createdAt)
+            VALUES (@id, @type, @page, @temporary_id, @conversation, @data, @createdAt)
+        `).run({
+            id,
+            type: inquiryData.type,
+            page: inquiryData.page ?? null,
+            temporary_id: inquiryData.temporary_id ?? null,
+            conversation: inquiryData.conversation ? JSON.stringify(inquiryData.conversation) : null,
+            data: inquiryData.data ? JSON.stringify(inquiryData.data) : null,
+            createdAt,
         });
-        return docRef.id;
+
+        return id;
     } catch (error: any) {
         console.error("[DB saveInquiry] Error saving inquiry: ", error);
         await logError({
@@ -43,18 +54,26 @@ export async function saveInquiry(inquiryData: Omit<Inquiry, 'id' | 'createdAt'>
 
 
 export async function getInquiries(): Promise<Inquiry[]> {
-    if (!firestore) return [];
     try {
-        const inquiriesRef = collection(firestore, 'inquiries');
-        const q = query(inquiriesRef, orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            // Serialize Timestamp to string before sending to client
+        const rows = db.prepare('SELECT * FROM inquiries ORDER BY createdAt DESC').all() as Array<{
+            id: string;
+            type: 'customization' | 'contact' | 'booking';
+            page: string | null;
+            temporary_id: string | null;
+            conversation: string | null;
+            data: string | null;
+            createdAt: string;
+        }>;
+
+        return rows.map((row) => {
             return {
-                id: doc.id,
-                ...data,
-                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString(),
+                id: row.id,
+                type: row.type,
+                page: row.page ?? undefined,
+                temporary_id: row.temporary_id ?? undefined,
+                conversation: row.conversation ? JSON.parse(row.conversation) as CustomizeTripInput : undefined,
+                data: row.data ? JSON.parse(row.data) : undefined,
+                createdAt: row.createdAt,
             } as Inquiry;
         });
     } catch (error: any) {

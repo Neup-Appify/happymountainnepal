@@ -1,17 +1,13 @@
 // src/app/sitemap/team.xml/route.ts
 import { NextResponse } from 'next/server';
-import { firestore } from '@/lib/firebase-server';
-import { collection, getDocs } from 'firebase/firestore';
-import type { TeamMember } from '@/lib/types';
+import { getTeamMembers } from '@/lib/db/team';
 
 const BASE_URL = 'https://happymountainnepal.com';
 
 export async function GET() {
-  const membersRef = collection(firestore, 'teamMembers');
-  const querySnapshot = await getDocs(membersRef);
+  const members = await getTeamMembers();
 
-  const urls = querySnapshot.docs.map(doc => {
-    const member = doc.data() as TeamMember;
+  const urls = members.map((member) => {
     return `
     <url>
       <loc>${`${BASE_URL}/about/teams/${member.slug}`}</loc>

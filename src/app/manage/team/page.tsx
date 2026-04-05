@@ -11,8 +11,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { PlusCircle, GripVertical, Pencil, Trash2, Users } from 'lucide-react';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, orderBy as firestoreOrderBy } from 'firebase/firestore';
 import type { TeamMember, TeamGroup } from '@/lib/types';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,7 +25,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { createTeamGroup, updateTeamGroup, deleteTeamGroup, batchUpdateTeamMemberPositions, batchUpdateTeamGroupOrder } from '@/lib/db';
+import { createTeamGroup, updateTeamGroup, deleteTeamGroup, batchUpdateTeamMemberPositions, batchUpdateTeamGroupOrder, getTeamMembers, getTeamGroups } from '@/lib/db';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DeleteTeamMemberDialog } from '@/components/manage/DeleteTeamMemberDialog';
@@ -48,28 +46,19 @@ export default function TeamManagementPage() {
   const [newGroupDescription, setNewGroupDescription] = useState('');
   const [editingGroup, setEditingGroup] = useState<TeamGroup | null>(null);
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
-  const firestore = useFirestore();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!firestore) return;
     fetchData();
-  }, [firestore]);
+  }, []);
 
   const fetchData = async () => {
-    if (!firestore) return;
     setLoading(true);
     try {
-      // Fetch team members
-      const membersRef = collection(firestore, 'teamMembers');
-      const membersSnapshot = await getDocs(membersRef);
-      const members = membersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamMember));
-
-      // Fetch team groups
-      const groupsRef = collection(firestore, 'teamGroups');
-      const groupsQuery = query(groupsRef, firestoreOrderBy('orderIndex', 'asc'));
-      const groupsSnapshot = await getDocs(groupsQuery);
-      const groups = groupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TeamGroup));
+      const [members, groups] = await Promise.all([
+        getTeamMembers(),
+        getTeamGroups(),
+      ]);
 
       setTeamMembers(members);
       setTeamGroups(groups);

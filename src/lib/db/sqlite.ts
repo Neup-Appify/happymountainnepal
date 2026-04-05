@@ -155,6 +155,43 @@ export function initDb() {
       content TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS teamGroups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      orderIndex INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS teamMembers (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      bio TEXT NOT NULL,
+      image TEXT NOT NULL,
+      groupId TEXT,
+      orderIndex INTEGER,
+      shortDescription TEXT,
+      story TEXT,
+      gallery TEXT,
+      socials TEXT,
+      FOREIGN KEY (groupId) REFERENCES teamGroups(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_team_members_group_order ON teamMembers(groupId, orderIndex);
+
+    CREATE TABLE IF NOT EXISTS inquiries (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      page TEXT,
+      temporary_id TEXT,
+      conversation TEXT,
+      data TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_inquiries_createdAt ON inquiries(createdAt DESC);
   `);
 
   // Migration for adding parentId to existing table if needed
@@ -183,6 +220,30 @@ export function initDb() {
     }
   } catch (error) {
     console.error("Migration error (packages columns):", error);
+  }
+
+  // Migration for teamMembers optional profile fields if needed
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(teamMembers)").all() as any[];
+    const hasShortDescription = tableInfo.some(col => col.name === 'shortDescription');
+    const hasStory = tableInfo.some(col => col.name === 'story');
+    const hasGallery = tableInfo.some(col => col.name === 'gallery');
+    const hasSocials = tableInfo.some(col => col.name === 'socials');
+
+    if (!hasShortDescription) {
+      db.prepare("ALTER TABLE teamMembers ADD COLUMN shortDescription TEXT").run();
+    }
+    if (!hasStory) {
+      db.prepare("ALTER TABLE teamMembers ADD COLUMN story TEXT").run();
+    }
+    if (!hasGallery) {
+      db.prepare("ALTER TABLE teamMembers ADD COLUMN gallery TEXT").run();
+    }
+    if (!hasSocials) {
+      db.prepare("ALTER TABLE teamMembers ADD COLUMN socials TEXT").run();
+    }
+  } catch (error) {
+    console.error("Migration error (teamMembers profile columns):", error);
   }
 }
 
