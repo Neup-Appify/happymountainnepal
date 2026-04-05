@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs, where, query } from 'firebase/firestore';
+import { getAllPublishedTours } from '@/lib/db/tours';
 import type { Tour } from '@/lib/types';
 import { TourCard } from '@/components/TourCard';
 import { MinimalTourFilters } from '@/components/MinimalTourFilters';
@@ -25,8 +24,7 @@ function ToursPageContent() { // Renamed to ToursPageContent
   const initialHardship = initialHardshipParam
     ? initialHardshipParam.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
     : [];
-  
-  const firestore = useFirestore();
+
   const [tours, setTours] = useState<Tour[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,17 +35,17 @@ function ToursPageContent() { // Renamed to ToursPageContent
   });
 
   useEffect(() => {
-    if (!firestore) return;
     const fetchTours = async () => {
       setLoading(true);
-      const q = query(collection(firestore, 'packages'), where('status', '==', 'published')); // Filter by published status
-      const querySnapshot = await getDocs(q);
-      const fetchedTours = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-      setTours(fetchedTours);
-      setLoading(false);
+      try {
+        const fetchedTours = await getAllPublishedTours();
+        setTours(fetchedTours);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchTours();
-  }, [firestore]);
+  }, []);
 
   useEffect(() => {
     setFilters(prev => ({
