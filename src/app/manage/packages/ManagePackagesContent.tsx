@@ -32,6 +32,12 @@ export function ManagePackagesContent({ status = 'published' }: ManagePackagesCo
         totalCount: 0,
     });
 
+    const emptyPagination = {
+        currentPage: 1,
+        totalPages: 0,
+        totalCount: 0,
+    };
+
     const currentPage = parseInt(searchParams.get('page') || '1', 10);
 
     useEffect(() => {
@@ -48,16 +54,16 @@ export function ManagePackagesContent({ status = 'published' }: ManagePackagesCo
                 if (!response.ok) throw new Error('Failed to fetch packages');
 
                 const data = await response.json();
-                setTours(data.packages);
-                setPagination(data.pagination);
+                setTours(Array.isArray(data.packages) ? data.packages : []);
+                setPagination(data.pagination ?? {
+                    ...emptyPagination,
+                    currentPage: page,
+                    totalCount: Array.isArray(data.packages) ? data.packages.length : 0,
+                });
             } catch (error) {
                 console.error('Error fetching packages:', error);
                 setTours([]);
-                setPagination({
-                    currentPage: 1,
-                    totalPages: 0,
-                    totalCount: 0,
-                });
+                setPagination(emptyPagination);
             } finally {
                 setLoading(false);
             }
