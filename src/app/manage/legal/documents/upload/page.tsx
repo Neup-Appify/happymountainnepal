@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -18,9 +18,12 @@ import {
   UploadIcon,
   FileText,
   XCircle,
+  Library,
 } from 'lucide-react';
 import Link from 'next/link';
-import { addLegalDocument } from '@/lib/db';
+import { addLegalDocument, logFileUpload } from '@/lib/db';
+import { MediaLibraryDialog } from '@/components/manage/MediaLibraryDialog';
+import type { ImageWithCaption } from '@/lib/types';
 
 export default function UploadLegalDocumentPage() {
   const router = useRouter();
@@ -30,53 +33,92 @@ export default function UploadLegalDocumentPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedExistingUrl, setSelectedExistingUrl] = useState('');
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+  const selectedSourceLabel = useMemo(() => {
+    if (selectedFile) return selectedFile.name;
+    if (selectedExistingUrl) return selectedExistingUrl;
+    return '';
+  }, [selectedExistingUrl, selectedFile]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setSelectedFile(file);
+    if (file) {
+      setSelectedFile(file);
+      setSelectedExistingUrl('');
+    }
+  };
+
+  const handleExistingSelect = (files: ImageWithCaption[]) => {
+    const url = files[0]?.url || '';
+    setSelectedExistingUrl(url);
+    setSelectedFile(null);
+    setIsLibraryOpen(false);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedFile(null);
+    setSelectedExistingUrl('');
   };
 
   const handleUpload = () => {
-    if (!title.trim() || !selectedFile) {
+    if (!title.trim() || (!selectedFile && !selectedExistingUrl)) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Title and file are required.',
+        description: 'Title and a file selection are required.',
       });
       return;
     }
 
     startTransition(async () => {
       try {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        formData.append('platform', 'p3.happymountainnepal');
-        formData.append(
-          'contentIds',
-          JSON.stringify(['legal-documents', 'admin-user', 'upload-page'])
-        );
-        formData.append(
-          'name',
-          selectedFile.name.replace(/\.[^/.]+$/, '')
-        );
+        let documentUrl = selectedExistingUrl;
 
-        const res = await fetch(
-          'https://cdn.neupgroup.com/bridge/api/v1/upload',
-          { method: 'POST', body: formData }
-        );
+        if (selectedFile) {
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          formData.append('platform', 'p3.happymountainnepal');
+          formData.append(
+            'contentIds',
+            JSON.stringify(['legal-documents', 'admin-user', 'upload-page'])
+          );
+          formData.append(
+            'name',
+            selectedFile.name.replace(/\.[^/.]+$/, '')
+          );
 
-        const text = await res.text();
-        if (!res.ok) throw new Error(text);
+          const res = await fetch(
+            'https://cdn.neupgroup.com/bridge/api/v1/upload',
+            { method: 'POST', body: formData }
+          );
 
-        const result = JSON.parse(text);
-        if (!result.success || !result.url) {
-          throw new Error(result.message || 'Upload failed');
+          const text = await res.text();
+          if (!res.ok) throw new Error(text);
+
+          const result = JSON.parse(text);
+          if (!result.success || !result.url) {
+            throw new Error(result.message || 'Upload failed');
+          }
+
+          documentUrl = result.url;
+
+          await logFileUpload({
+            name: selectedFile.name,
+            url: documentUrl,
+            uploadedBy: 'admin',
+            type: selectedFile.type,
+            size: selectedFile.size,
+            tags: ['legal-documents', 'document'],
+            meta: [],
+          });
         }
 
         await addLegalDocument({
           title: title.trim(),
           description: description.trim(),
-          url: result.url,
+          url: documentUrl,
         });
 
         toast({
@@ -165,17 +207,17 @@ export default function UploadLegalDocumentPage() {
                 disabled={isSubmitting}
               />
 
-              {selectedFile ? (
+              {selectedSourceLabel ? (
                 <>
                   <FileText className="h-8 w-8 mx-auto text-green-500" />
-                  <p className="text-sm mt-1">{selectedFile.name}</p>
+                  <p className="text-sm mt-1 break-all">{selectedSourceLabel}</p>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-destructive mt-2"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedFile(null);
+                      handleClearSelection();
                     }}
                   >
                     <XCircle className="h-4 w-4 mr-1" />
@@ -191,11 +233,22 @@ export default function UploadLegalDocumentPage() {
                 </>
               )}
             </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setIsLibraryOpen(true)}
+              disabled={isSubmitting}
+            >
+              <Library className="h-4 w-4 mr-2" />
+              Select From Uploaded Files
+            </Button>
           </div>
 
           <Button
             onClick={handleUpload}
-            disabled={isSubmitting || !title || !selectedFile}
+            disabled={isSubmitting || !title || (!selectedFile && !selectedExistingUrl)}
           >
             {isSubmitting ? (
               <>
@@ -208,6 +261,14 @@ export default function UploadLegalDocumentPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <MediaLibraryDialog
+        isOpen={isLibraryOpen}
+        onClose={() => setIsLibraryOpen(false)}
+        onSelect={handleExistingSelect}
+        initialSelectedUrls={selectedExistingUrl ? [selectedExistingUrl] : []}
+        defaultTags={['legal-documents', 'document']}
+      />
     </div>
   );
 }

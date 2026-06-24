@@ -1,10 +1,10 @@
 
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getLegalDocumentById, updateLegalDocument, logFileUpload } from '@/lib/db';
-import type { LegalDocument } from '@/lib/types';
+import type { ImageWithCaption, LegalDocument } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowLeft, Save, Upload as UploadIcon, FileText } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Upload as UploadIcon, FileText, Library } from 'lucide-react';
+import { MediaLibraryDialog } from '@/components/manage/MediaLibraryDialog';
 
 
 export default function EditLegalDocumentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,7 +33,14 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
 
     // New file upload state
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [uploadDestination, setUploadDestination] = useState<'api' | 'public'>('api');
+    const [selectedExistingUrl, setSelectedExistingUrl] = useState('');
+    const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+    const selectedSourceLabel = useMemo(() => {
+        if (selectedFile) return selectedFile.name;
+        if (selectedExistingUrl) return selectedExistingUrl;
+        return '';
+    }, [selectedExistingUrl, selectedFile]);
 
     useEffect(() => {
         async function fetchDocument() {
@@ -61,7 +69,20 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
         const file = e.target.files?.[0];
         if (file) {
             setSelectedFile(file);
+            setSelectedExistingUrl('');
         }
+    };
+
+    const handleExistingSelect = (files: ImageWithCaption[]) => {
+        const url = files[0]?.url || '';
+        setSelectedExistingUrl(url);
+        setSelectedFile(null);
+        setIsLibraryOpen(false);
+    };
+
+    const handleClearReplacement = () => {
+        setSelectedFile(null);
+        setSelectedExistingUrl('');
     };
 
     const handleSave = async () => {
@@ -74,61 +95,42 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
         try {
             let fileUrl = currentFileUrl;
 
-            // Check if a new file is being uploaded
+            if (selectedExistingUrl) {
+                fileUrl = selectedExistingUrl;
+            }
+
             if (selectedFile) {
-                if (uploadDestination === 'api') {
-                    // Upload to neupgroup.com API
-                    const formData = new FormData();
-                    formData.append('file', selectedFile);
-                    formData.append('platform', 'p3.happymountainnepal');
-                    formData.append('contentIds', JSON.stringify(['legal-documents', 'admin-user', 'edit']));
-                    formData.append('name', selectedFile.name.replace(/\.[^/.]+$/, ''));
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('platform', 'p3.happymountainnepal');
+                formData.append('contentIds', JSON.stringify(['legal-documents', 'admin-user', 'edit']));
+                formData.append('name', selectedFile.name.replace(/\.[^/.]+$/, ''));
 
-                    const response = await fetch('https://cdn.neupgroup.com/bridge/api/v1/upload', {
-                        method: 'POST',
-                        body: formData,
-                    });
+                const response = await fetch('https://cdn.neupgroup.com/bridge/api/v1/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
 
-                    const responseText = await response.text();
-                    if (!response.ok) {
-                        throw new Error(`Upload failed: ${response.status} ${responseText}`);
-                    }
+                const responseText = await response.text();
+                if (!response.ok) {
+                    throw new Error(`Upload failed: ${response.status} ${responseText}`);
+                }
 
-                    const result = JSON.parse(responseText);
-                    if (result.success && result.url) {
-                        fileUrl = result.url;
-
-                        await logFileUpload({
-                            name: selectedFile.name,
-                            url: fileUrl,
-                            uploadedBy: 'admin',
-                            type: selectedFile.type,
-                            size: selectedFile.size,
-                            tags: ['legal-documents', 'document'],
-                            meta: []
-                        });
-                    } else {
-                        throw new Error(result.message || 'Unknown upload error');
-                    }
-                } else {
-                    // Upload to local server /public
-                    const formData = new FormData();
-                    formData.append('file', selectedFile);
-                    formData.append('compress', 'false');
-                    formData.append('uploadType', 'server');
-                    formData.append('serverPath', 'documents');
-
-                    const response = await fetch('/api/upload', {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('Upload failed');
-                    }
-
-                    const result = await response.json();
+                const result = JSON.parse(responseText);
+                if (result.success && result.url) {
                     fileUrl = result.url;
+
+                    await logFileUpload({
+                        name: selectedFile.name,
+                        url: fileUrl,
+                        uploadedBy: 'admin',
+                        type: selectedFile.type,
+                        size: selectedFile.size,
+                        tags: ['legal-documents', 'document'],
+                        meta: []
+                    });
+                } else {
+                    throw new Error(result.message || 'Unknown upload error');
                 }
             }
 
@@ -233,16 +235,18 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
                                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                                 disabled={isSaving}
                             />
-                            {selectedFile ? (
+                            {selectedSourceLabel ? (
                                 <div className="space-y-1">
                                     <FileText className="h-8 w-8 mx-auto text-green-500" />
-                                    <p className="text-sm font-medium">{selectedFile.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB - Ready to upload
-                                    </p>
+                                    <p className="text-sm font-medium break-all">{selectedSourceLabel}</p>
+                                    {selectedFile && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB - Ready to upload
+                                        </p>
+                                    )}
                                     <Button variant="ghost" size="sm" onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedFile(null);
+                                        handleClearReplacement();
                                     }} className="mt-2 text-destructive">
                                         Remove Selection
                                     </Button>
@@ -259,6 +263,16 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
                                 </div>
                             )}
                         </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => setIsLibraryOpen(true)}
+                            disabled={isSaving}
+                        >
+                            <Library className="h-4 w-4 mr-2" />
+                            Select From Uploaded Files
+                        </Button>
                     </div>
                     
                     <div className="flex justify-end gap-3 pt-4">
@@ -281,6 +295,14 @@ export default function EditLegalDocumentPage({ params }: { params: Promise<{ id
                     </div>
                 </CardContent>
             </Card>
+
+            <MediaLibraryDialog
+                isOpen={isLibraryOpen}
+                onClose={() => setIsLibraryOpen(false)}
+                onSelect={handleExistingSelect}
+                initialSelectedUrls={selectedExistingUrl ? [selectedExistingUrl] : []}
+                defaultTags={['legal-documents', 'document']}
+            />
         </div>
     );
 }

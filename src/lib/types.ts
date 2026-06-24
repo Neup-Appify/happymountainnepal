@@ -253,7 +253,7 @@ export interface LegalDocument {
 export interface LegalContent {
   id: 'privacy-policy' | 'terms-of-service';
   content: string;
-  lastUpdated: Timestamp;
+  lastUpdated: string;
 }
 
 // New type for AI import
