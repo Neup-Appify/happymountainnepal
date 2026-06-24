@@ -2,24 +2,23 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getFileUploads, getFileUploadsCount, deleteFileUpload } from '@/lib/db';
+import { getFileUploads, deleteFileUpload } from '@/lib/db';
 import { UploadDialog } from '@/components/upload/UploadDialog';
 import { formatDistanceToNow } from 'date-fns';
-import { PictureInPicture, ChevronLeft, ChevronRight, ExternalLink, FileIcon, Trash2, Plus, Copy, MoreHorizontal, Link as LinkIcon, Upload, Search } from 'lucide-react';
-import Image from 'next/image';
+import { PictureInPicture, ChevronLeft, ChevronRight, Trash2, Plus, Link as LinkIcon, Upload, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import type { FileUpload } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { SmartImage } from '@/components/ui/smart-image';
-import { Card, CardContent } from '@/components/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -38,30 +37,10 @@ export function UploadsContent() {
     const [totalCount, setTotalCount] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
     const { toast } = useToast();
-
-    const handleDelete = async (fileId: string) => {
-        if (!confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
-            return;
-        }
-
-        try {
-            await deleteFileUpload(fileId);
-            toast({
-                title: 'File Deleted',
-                description: 'The file has been successfully removed.',
-            });
-            fetchData(currentPage, searchTerm);
-        } catch (error) {
-            console.error('Failed to delete file:', error);
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: 'Failed to delete the file. Please try again.',
-            });
-        }
-    };
 
     const fetchData = async (page: number, search: string) => {
         setIsLoading(true);
@@ -75,6 +54,7 @@ export function UploadsContent() {
             setHasMore(result.hasMore);
             setTotalCount(result.totalCount || 0);
             setTotalPages(result.totalPages || 0);
+            setSelectedIds([]);
         } catch (error) {
             console.error('Error fetching uploads:', error);
         } finally {
@@ -129,9 +109,50 @@ export function UploadsContent() {
         }
     };
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        toast({ title: 'Copied', description: 'URL copied to clipboard.' });
+    const allVisibleSelected = fileItems.length > 0 && fileItems.every((item) => selectedIds.includes(item.id));
+
+    const toggleSelected = (fileId: string, checked: boolean) => {
+        setSelectedIds((current) => {
+            if (checked) {
+                return current.includes(fileId) ? current : [...current, fileId];
+            }
+
+            return current.filter((id) => id !== fileId);
+        });
+    };
+
+    const toggleSelectAllVisible = (checked: boolean) => {
+        setSelectedIds(checked ? fileItems.map((item) => item.id) : []);
+    };
+
+    const handleDeleteSelected = async () => {
+        if (selectedIds.length === 0) {
+            return;
+        }
+
+        const message = `Are you sure you want to delete ${selectedIds.length} selected ${selectedIds.length === 1 ? 'file' : 'files'}? This action cannot be undone.`;
+        if (!confirm(message)) {
+            return;
+        }
+
+        setIsDeletingSelected(true);
+        try {
+            await Promise.all(selectedIds.map((fileId) => deleteFileUpload(fileId)));
+            toast({
+                title: 'Files Deleted',
+                description: `${selectedIds.length} ${selectedIds.length === 1 ? 'file has' : 'files have'} been removed.`,
+            });
+            await fetchData(currentPage, searchTerm);
+        } catch (error) {
+            console.error('Failed to delete selected files:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'Failed to delete the selected files. Please try again.',
+            });
+        } finally {
+            setIsDeletingSelected(false);
+        }
     };
 
     return (
@@ -238,6 +259,33 @@ export function UploadsContent() {
                     {/* File List */}
                     {fileItems.length > 0 ? (
                         <Card className="overflow-hidden">
+                            <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Checkbox
+                                        id="select-all-uploads"
+                                        checked={allVisibleSelected}
+                                        onCheckedChange={(checked) => toggleSelectAllVisible(checked === true)}
+                                        aria-label="Select all uploads on this page"
+                                    />
+                                    <label htmlFor="select-all-uploads" className="text-sm font-medium cursor-pointer">
+                                        Select all on this page
+                                    </label>
+                                    {selectedIds.length > 0 && (
+                                        <span className="text-sm text-muted-foreground">
+                                            {selectedIds.length} selected
+                                        </span>
+                                    )}
+                                </div>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={handleDeleteSelected}
+                                    disabled={selectedIds.length === 0 || isDeletingSelected}
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    {isDeletingSelected ? 'Deleting...' : `Delete Selected${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
+                                </Button>
+                            </div>
                             <div className="flex flex-col">
                                 {fileItems.map((item, index) => (
                                     <div
@@ -247,6 +295,11 @@ export function UploadsContent() {
                                             index !== fileItems.length - 1 && "border-b"
                                         )}
                                     >
+                                        <Checkbox
+                                            checked={selectedIds.includes(item.id)}
+                                            onCheckedChange={(checked) => toggleSelected(item.id, checked === true)}
+                                            aria-label={`Select ${item.name}`}
+                                        />
                                         <Link
                                             href={`/manage/uploads/${item.id}`}
                                             className="flex-1 flex items-center gap-4 min-w-0 group"
@@ -332,6 +385,4 @@ export function UploadsContent() {
         </div >
     );
 }
-
-
 
