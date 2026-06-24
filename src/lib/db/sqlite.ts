@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import type { Tour, ManagedReview, OnSiteReview, OffSiteReview, BlogPost } from '@/lib/types';
+import { v4 as uuidv4 } from 'uuid';
 
 // Ensure data directory exists
 const dataDir = path.join(process.cwd(), 'base', 'sources');
@@ -156,6 +157,21 @@ export function initDb() {
       updatedAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS legalDocuments (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      url TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      isHidden INTEGER DEFAULT 0,
+      orderIndex INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS legalDocumentSettings (
+      id TEXT PRIMARY KEY,
+      requireEmailProtection INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE TABLE IF NOT EXISTS teamGroups (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -245,6 +261,26 @@ export function initDb() {
   } catch (error) {
     console.error("Migration error (teamMembers profile columns):", error);
   }
+
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(legalDocuments)").all() as any[];
+    const hasIsHidden = tableInfo.some(col => col.name === 'isHidden');
+    const hasOrderIndex = tableInfo.some(col => col.name === 'orderIndex');
+
+    if (!hasIsHidden) {
+      db.prepare("ALTER TABLE legalDocuments ADD COLUMN isHidden INTEGER DEFAULT 0").run();
+    }
+    if (!hasOrderIndex) {
+      db.prepare("ALTER TABLE legalDocuments ADD COLUMN orderIndex INTEGER").run();
+    }
+  } catch (error) {
+    console.error("Migration error (legalDocuments columns):", error);
+  }
+
+  db.prepare(`
+    INSERT OR IGNORE INTO legalDocumentSettings (id, requireEmailProtection)
+    VALUES ('legal', 1)
+  `).run();
 }
 
 // Initialize tables
@@ -1077,4 +1113,117 @@ export function saveLegalContent(id: string, content: string) {
   } else {
     db.prepare('INSERT INTO legal (id, content, updatedAt) VALUES (?, ?, ?)').run(id, content, updatedAt);
   }
+}
+
+export interface LegalDocumentDB {
+  id: string;
+  title: string;
+  description: string | null;
+  url: string;
+  createdAt: string;
+  isHidden: number | null;
+  orderIndex: number | null;
+}
+
+function mapLegalDocumentRow(row: LegalDocumentDB) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || undefined,
+    url: row.url,
+    createdAt: row.createdAt,
+    isHidden: Boolean(row.isHidden),
+    orderIndex: row.orderIndex ?? undefined,
+  };
+}
+
+export function getAllLegalDocuments() {
+  const rows = db.prepare(`
+    SELECT id, title, description, url, createdAt, isHidden, orderIndex
+    FROM legalDocuments
+    ORDER BY
+      CASE WHEN orderIndex IS NULL THEN 1 ELSE 0 END,
+      orderIndex ASC,
+      datetime(createdAt) DESC
+  `).all() as LegalDocumentDB[];
+
+  return rows.map(mapLegalDocumentRow);
+}
+
+export function getLegalDocument(id: string) {
+  const row = db.prepare(`
+    SELECT id, title, description, url, createdAt, isHidden, orderIndex
+    FROM legalDocuments
+    WHERE id = ?
+  `).get(id) as LegalDocumentDB | undefined;
+
+  return row ? mapLegalDocumentRow(row) : null;
+}
+
+export function saveLegalDocument(data: {
+  id?: string;
+  title: string;
+  description?: string;
+  url: string;
+  createdAt?: string;
+  isHidden?: boolean;
+  orderIndex?: number;
+}) {
+  const id = data.id || uuidv4();
+  const createdAt = data.createdAt || new Date().toISOString();
+  const existing = db.prepare('SELECT id FROM legalDocuments WHERE id = ?').get(id);
+
+  if (existing) {
+    db.prepare(`
+      UPDATE legalDocuments
+      SET title = ?, description = ?, url = ?, isHidden = ?, orderIndex = ?
+      WHERE id = ?
+    `).run(
+      data.title,
+      data.description?.trim() || null,
+      data.url,
+      data.isHidden ? 1 : 0,
+      data.orderIndex ?? null,
+      id
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO legalDocuments (id, title, description, url, createdAt, isHidden, orderIndex)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.title,
+      data.description?.trim() || null,
+      data.url,
+      createdAt,
+      data.isHidden ? 1 : 0,
+      data.orderIndex ?? null
+    );
+  }
+
+  return id;
+}
+
+export function deleteLegalDocumentRecord(id: string) {
+  db.prepare('DELETE FROM legalDocuments WHERE id = ?').run(id);
+}
+
+export function getLegalDocumentSettings() {
+  const row = db.prepare(`
+    SELECT requireEmailProtection
+    FROM legalDocumentSettings
+    WHERE id = 'legal'
+  `).get() as { requireEmailProtection: number } | undefined;
+
+  return {
+    requireEmailProtection: row ? Boolean(row.requireEmailProtection) : true,
+  };
+}
+
+export function saveLegalDocumentSettings(settings: { requireEmailProtection: boolean }) {
+  db.prepare(`
+    INSERT INTO legalDocumentSettings (id, requireEmailProtection)
+    VALUES ('legal', ?)
+    ON CONFLICT(id) DO UPDATE SET requireEmailProtection = excluded.requireEmailProtection
+  `).run(settings.requireEmailProtection ? 1 : 0);
 }

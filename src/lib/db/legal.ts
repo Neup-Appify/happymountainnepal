@@ -1,110 +1,96 @@
-
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, Timestamp, doc, setDoc, deleteDoc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { LegalContent, LegalDocument } from '@/lib/types';
-import { logError } from './errors';
+import {
+  deleteLegalDocumentRecord,
+  getAllLegalDocuments,
+  getLegalContent as getSqliteLegalContent,
+  getLegalDocument as getSqliteLegalDocument,
+  getLegalDocumentSettings,
+  saveLegalContent as saveSqliteLegalContent,
+  saveLegalDocument,
+  saveLegalDocumentSettings,
+} from '@/lib/db/sqlite';
 
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as T : null;
+function mapLegalContentId(id: 'privacy-policy' | 'terms-of-service') {
+  return id === 'privacy-policy' ? 'privacy' : 'terms';
 }
 
 export async function getLegalContent(id: 'privacy-policy' | 'terms-of-service'): Promise<LegalContent | null> {
-    return getDocById<LegalContent>('legal', id);
+  const data = getSqliteLegalContent(mapLegalContentId(id));
+  if (!data) return null;
+
+  return {
+    id,
+    content: data.content,
+    lastUpdated: data.updatedAt as unknown as LegalContent['lastUpdated'],
+  };
 }
 
 export async function updateLegalContent(id: 'privacy-policy' | 'terms-of-service', content: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'legal', id);
-    await setDoc(docRef, {
-        content: content,
-        lastUpdated: serverTimestamp()
-    }, { merge: true });
+  saveSqliteLegalContent(mapLegalContentId(id), content);
 }
 
 export async function getLegalDocuments(): Promise<LegalDocument[]> {
-    if (!firestore) return [];
-    const docsRef = collection(firestore, 'legalDocuments');
-    const q = query(docsRef, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    const docs = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            createdAt: (data.createdAt as Timestamp).toDate().toISOString()
-        } as LegalDocument;
-    });
-
-    // Sort by orderIndex ascending, then by createdAt descending
-    return docs.sort((a, b) => {
-        const orderA = a.orderIndex ?? Number.MAX_SAFE_INTEGER;
-        const orderB = b.orderIndex ?? Number.MAX_SAFE_INTEGER;
-        if (orderA !== orderB) return orderA - orderB;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+  return getAllLegalDocuments();
 }
 
 export async function getLegalDocumentById(id: string): Promise<LegalDocument | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, 'legalDocuments', id);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) return null;
-    const data = docSnap.data();
-    return {
-        id: docSnap.id,
-        ...data,
-        createdAt: (data.createdAt as Timestamp).toDate().toISOString()
-    } as LegalDocument;
+  return getSqliteLegalDocument(id);
 }
 
 export async function addLegalDocument(data: Omit<LegalDocument, 'id' | 'createdAt'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = await addDoc(collection(firestore, 'legalDocuments'), {
-        ...data,
-        createdAt: serverTimestamp(),
-    });
-    return docRef.id;
+  return saveLegalDocument({
+    title: data.title,
+    description: data.description,
+    url: data.url,
+    isHidden: data.isHidden,
+    orderIndex: data.orderIndex,
+  });
 }
 
 export async function deleteLegalDocument(id: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    await deleteDoc(doc(firestore, 'legalDocuments', id));
+  deleteLegalDocumentRecord(id);
 }
 
 export async function updateLegalDocument(id: string, data: Partial<Omit<LegalDocument, 'id' | 'createdAt'>>): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'legalDocuments', id);
-    await updateDoc(docRef, { ...data });
+  const existing = getSqliteLegalDocument(id);
+  if (!existing) {
+    throw new Error('Legal document not found.');
+  }
+
+  saveLegalDocument({
+    id,
+    title: data.title ?? existing.title,
+    description: data.description ?? existing.description,
+    url: data.url ?? existing.url,
+    createdAt: existing.createdAt,
+    isHidden: data.isHidden ?? existing.isHidden,
+    orderIndex: data.orderIndex ?? existing.orderIndex,
+  });
 }
 
 export async function getLegalSettings(): Promise<{ requireEmailProtection: boolean }> {
-    if (!firestore) return { requireEmailProtection: true };
-    const docRef = doc(firestore, 'settings', 'legal');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as { requireEmailProtection: boolean };
-    }
-    return { requireEmailProtection: true };
+  return getLegalDocumentSettings();
 }
 
 export async function updateLegalSettings(settings: { requireEmailProtection: boolean }): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'settings', 'legal');
-    await setDoc(docRef, settings, { merge: true });
+  saveLegalDocumentSettings(settings);
 }
-export async function updateLegalDocumentsOrder(updates: { id: string, orderIndex: number }[]): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    const batch = writeBatch(firestore);
 
-    updates.forEach(({ id, orderIndex }) => {
-        const docRef = doc(firestore, 'legalDocuments', id);
-        batch.update(docRef, { orderIndex });
+export async function updateLegalDocumentsOrder(updates: { id: string; orderIndex: number }[]): Promise<void> {
+  for (const update of updates) {
+    const existing = getSqliteLegalDocument(update.id);
+    if (!existing) continue;
+
+    saveLegalDocument({
+      id: existing.id,
+      title: existing.title,
+      description: existing.description,
+      url: existing.url,
+      createdAt: existing.createdAt,
+      isHidden: existing.isHidden,
+      orderIndex: update.orderIndex,
     });
-
-    await batch.commit();
+  }
 }
