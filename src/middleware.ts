@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getManagerData } from '@/lib/base-edge';
+import { classifyUserAgent } from '@/lib/log-classification';
 import { readBaseJson } from '@/lib/reader';
 import redirects from '@/../base/core/redirects.json';
 // import appInfo from '@/../base/appinfo.json';
@@ -17,23 +18,6 @@ interface RedirectRule {
   type: string;
   created_by?: string;
   created_on?: string;
-}
-
-// Bot detection
-function isBot(userAgent: string): boolean {
-  const botPatterns = [
-    /bot/i, /crawler/i, /spider/i, /crawling/i,
-    /googlebot/i, /bingbot/i, /slurp/i, /duckduckbot/i,
-    /baiduspider/i, /yandexbot/i, /facebookexternalhit/i,
-    /twitterbot/i, /rogerbot/i, /linkedinbot/i,
-    /embedly/i, /quora link preview/i, /showyoubot/i,
-    /outbrain/i, /pinterest/i, /slackbot/i, /vkShare/i,
-    /W3C_Validator/i, /redditbot/i, /applebot/i, /whatsapp/i,
-    /flipboard/i, /tumblr/i, /bitlybot/i, /skypeuripreview/i,
-    /nuzzel/i, /discordbot/i, /qwantify/i, /pinterestbot/i,
-    /telegrambot/i, /semrushbot/i, /ahrefsbot/i, /dotbot/i,
-  ];
-  return botPatterns.some(pattern => pattern.test(userAgent));
 }
 
 // Resource type
@@ -89,7 +73,7 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   requestHeaders.set('x-temp-account-id', accountId);
 
   const shouldLog = !pathname.startsWith('/_next') && pathname !== '/favicon.ico';
-  const isBotRequest = isBot(userAgent);
+  const isBotRequest = classifyUserAgent(userAgent).isBot;
 
   // Create the base response with the new headers
   const response = NextResponse.next({

@@ -3,8 +3,9 @@
 
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { getActivitiesByAccountId } from '@/lib/db';
-import type { Activity } from '@/lib/types'; // Corrected import for Activity
+import { getLogsByIdentifier } from '@/lib/db';
+import { classifyUserAgent, normalizeStoredReferrerSource } from '@/lib/log-classification';
+import type { Log } from '@/lib/types';
 import {
   Table,
   TableBody,
@@ -34,18 +35,18 @@ type ActivityPageProps = {
 
 export default function AccountActivityPage({ params }: ActivityPageProps) {
   const { accountId } = use(params);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accountId) return;
     
-    const fetchActivities = async () => {
+    const fetchLogs = async () => {
       try {
         setLoading(true);
-        const fetchedActivities = await getActivitiesByAccountId(accountId);
-        setActivities(fetchedActivities);
+        const fetchedLogs = await getLogsByIdentifier(accountId);
+        setLogs(fetchedLogs);
         setError(null);
       } catch (err) {
         console.error(err);
@@ -55,7 +56,7 @@ export default function AccountActivityPage({ params }: ActivityPageProps) {
       }
     };
 
-    fetchActivities();
+    fetchLogs();
   }, [accountId]);
 
   if (loading) {
@@ -97,44 +98,80 @@ export default function AccountActivityPage({ params }: ActivityPageProps) {
         </div>
         <CardTitle>User Activity</CardTitle>
         <CardDescription className="font-mono text-xs break-all">
-          Showing activities for account: {accountId}
+          Showing logged activity for identifier: {accountId}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {activities.length > 0 ? (
+        {logs.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Activity</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>IP</TableHead>
+                <TableHead>Referrer</TableHead>
                 <TableHead className="text-right">Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activities.map((activity) => (
-                <TableRow key={activity.id}>
+              {logs.map((log) => {
+                const agentCategory = log.agentCategory || classifyUserAgent(log.userAgent).agentCategory;
+                const referrerSource = normalizeStoredReferrerSource(log.referrerSource, log.referrer);
+                const timestamp =
+                  typeof log.timestamp === 'string'
+                    ? new Date(log.timestamp)
+                    : log.timestamp?.toDate
+                      ? log.timestamp.toDate()
+                      : null;
+
+                return (
+                <TableRow key={log.id}>
                   <TableCell>
-                    <Badge>{activity.activityName}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs font-mono break-all whitespace-pre-wrap">
-                    {activity.activityName === 'page_view' ? activity.activityInfo.path : JSON.stringify(activity.activityInfo)}
+                    <div className="space-y-1">
+                      <Badge>{log.resourceType}</Badge>
+                      <div className="text-xs text-muted-foreground">
+                        {log.method || 'GET'} {log.pageAccessed}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{activity.fromIp}</Badge>
+                    <div className="space-y-1">
+                      <Badge variant={agentCategory === 'Person' ? 'default' : 'secondary'}>
+                        {agentCategory}
+                      </Badge>
+                      <div className="text-xs text-muted-foreground">
+                        {log.statusCode ? `Status ${log.statusCode}` : 'No status'}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {log.ipAddress || 'Unknown'}
+                      {log.countryCode ? ` (${log.countryCode})` : ''}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <div className="space-y-1">
+                      <div>{referrerSource}</div>
+                      {log.referrer ? (
+                        <div className="max-w-[18rem] break-all text-muted-foreground">
+                          {log.referrer}
+                        </div>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right text-xs">
-                    {activity.activityTime?.toDate ? formatDistanceToNow(activity.activityTime.toDate(), { addSuffix: true }) : 'N/A'}
+                    {timestamp ? formatDistanceToNow(timestamp, { addSuffix: true }) : 'N/A'}
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
         ) : (
           <div className="text-center py-16 text-muted-foreground">
             <ActivityIcon className="mx-auto h-12 w-12" />
             <h3 className="mt-4 text-lg font-semibold">No Activities Found</h3>
-            <p>This user has not performed any tracked activities yet.</p>
+            <p>This identifier has no logged activity yet.</p>
           </div>
         )}
       </CardContent>

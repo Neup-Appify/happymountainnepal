@@ -205,8 +205,13 @@ export interface DisplayUser {
   id: string;
   activityCount: number;
   lastSeen: string;
+  firstSeen: string;
   identifier: string;
   type: 'Permanent' | 'Temporary';
+  userAgentCategory: string;
+  referrerSource: string;
+  ipAddress: string;
+  countryCode?: string;
 }
 
 export interface SiteProfile {
@@ -298,8 +303,11 @@ export interface Log {
   referrer?: string; // Where the user came from
   userAgent: string; // Browser/bot user agent
   ipAddress?: string; // Client IP address
+  countryCode?: string;
   timestamp: Timestamp | string; // When the access occurred (Timestamp in DB, string when serialized)
   isBot?: boolean; // Whether this appears to be a bot
+  agentCategory?: string;
+  referrerSource?: string;
   metadata?: Record<string, any>; // Any additional information
 }
 

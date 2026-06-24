@@ -295,8 +295,11 @@ export function initDb() {
       referrer TEXT,
       userAgent TEXT NOT NULL,
       ipAddress TEXT,
+      countryCode TEXT,
       timestamp TEXT NOT NULL,
       isBot INTEGER DEFAULT 0,
+      agentCategory TEXT,
+      referrerSource TEXT,
       metadata TEXT
     );
 
@@ -394,8 +397,20 @@ export function initDb() {
   try {
     const tableInfo = db.prepare("PRAGMA table_info(logs)").all() as any[];
     const hasAccountId = tableInfo.some(col => col.name === 'accountId');
+    const hasCountryCode = tableInfo.some(col => col.name === 'countryCode');
+    const hasAgentCategory = tableInfo.some(col => col.name === 'agentCategory');
+    const hasReferrerSource = tableInfo.some(col => col.name === 'referrerSource');
     if (!hasAccountId) {
       db.prepare("ALTER TABLE logs ADD COLUMN accountId TEXT").run();
+    }
+    if (!hasCountryCode) {
+      db.prepare("ALTER TABLE logs ADD COLUMN countryCode TEXT").run();
+    }
+    if (!hasAgentCategory) {
+      db.prepare("ALTER TABLE logs ADD COLUMN agentCategory TEXT").run();
+    }
+    if (!hasReferrerSource) {
+      db.prepare("ALTER TABLE logs ADD COLUMN referrerSource TEXT").run();
     }
   } catch (error) {
     console.error("Migration error (logs columns):", error);

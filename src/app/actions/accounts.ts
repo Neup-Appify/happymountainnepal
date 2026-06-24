@@ -1,9 +1,10 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
 import type { Account } from '@/lib/types';
-import { getAccountByEmail, getAccountById, saveAccount } from '@/lib/db/accounts';
+import { clearUnrealAccounts, getAccountByEmail, getAccountById, saveAccount } from '@/lib/db/accounts';
 
 const ACCOUNT_COOKIE = 'account_id';
 
@@ -86,4 +87,10 @@ export async function logoutAccountAction() {
 
 export async function saveAccountAction(data: Omit<Account, 'createdAt'> & { createdAt?: string }) {
   await saveAccount(data);
+}
+
+export async function clearUnrealAccountsAction() {
+  const result = await clearUnrealAccounts();
+  revalidatePath('/manage/accounts');
+  return result;
 }

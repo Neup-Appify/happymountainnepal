@@ -29,20 +29,27 @@ export async function POST(request: NextRequest) {
             finalCookieId = "notdefined";
         }
 
-        if (!pageAccessed || !resourceType || !userAgent) {
+        const finalUserAgent = userAgent || request.headers.get('user-agent');
+        const finalReferrer = referrer || request.headers.get('referer') || undefined;
+        const finalIpAddress =
+            ipAddress ||
+            request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+            request.headers.get('x-real-ip') ||
+            undefined;
+
+        if (!pageAccessed || !resourceType || !finalUserAgent) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
         await createLog({
             cookieId: finalCookieId,
-
             pageAccessed,
             resourceType,
             method,
             statusCode,
-            referrer,
-            userAgent,
-            ipAddress,
+            referrer: finalReferrer,
+            userAgent: finalUserAgent,
+            ipAddress: finalIpAddress,
             isBot,
             metadata,
         });
