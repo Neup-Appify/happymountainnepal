@@ -8,44 +8,46 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
 import type { Tour, Account } from '@/lib/types';
-import { useAuth, useDoc, useFirestore, useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
-import { signOut } from 'firebase/auth';
-import { doc, collection, getDocs, query, where } from 'firebase/firestore'; // Added query, where
 import { Skeleton } from '@/components/ui/skeleton';
+import { getCurrentAccountAction, logoutAccountAction } from '@/app/actions/accounts';
 
 export default function ProfilePage() {
   const { wishlist } = useWishlist();
   const [wishlistedTours, setWishlistedTours] = useState<Tour[]>([]);
-  const { user, isUserLoading } = useUser();
   const router = useRouter();
-  const auth = useAuth();
-  const firestore = useFirestore();
   const [allTours, setAllTours] = useState<Tour[]>([]);
   const [isToursLoading, setIsToursLoading] = useState(true);
-
-  const accountRef = user ? doc(firestore, 'accounts', user.uid) : null;
-  const { data: account, isLoading: isAccountLoading } = useDoc<Account>(accountRef);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [isAccountLoading, setIsAccountLoading] = useState(true);
 
   useEffect(() => {
-    if (!firestore) return;
     const fetchTours = async () => {
       setIsToursLoading(true);
-      const packagesQuery = query(collection(firestore, 'packages'), where('status', '==', 'published')); // Filter by published status
-      const querySnapshot = await getDocs(packagesQuery);
-      const tours = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-      setAllTours(tours);
+      const response = await fetch('/api/packages');
+      const data = await response.json();
+      setAllTours(data.packages || []);
       setIsToursLoading(false);
     };
     fetchTours();
-  }, [firestore]);
+  }, []);
+
+  useEffect(() => {
+    const fetchAccount = async () => {
+      setIsAccountLoading(true);
+      const currentAccount = await getCurrentAccountAction();
+      setAccount(currentAccount);
+      setIsAccountLoading(false);
+    };
+    fetchAccount();
+  }, []);
 
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    if (!isAccountLoading && !account) {
       router.push('/login');
     }
-  }, [user, isUserLoading, router]);
+  }, [account, isAccountLoading, router]);
   
   useEffect(() => {
     if (allTours) {
@@ -55,14 +57,14 @@ export default function ProfilePage() {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await logoutAccountAction();
       router.push('/');
     } catch (error) {
       console.error('Sign out error:', error);
     }
   };
 
-  const isLoading = isUserLoading || isAccountLoading || isToursLoading;
+  const isLoading = isAccountLoading || isToursLoading;
 
   if (isLoading) {
     return (
@@ -88,7 +90,7 @@ export default function ProfilePage() {
     );
   }
 
-  if (!user || !account) {
+  if (!account) {
     return null; // Redirect is handled by the effect
   }
 

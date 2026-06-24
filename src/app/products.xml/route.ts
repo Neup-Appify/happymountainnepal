@@ -1,8 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { firestore } from '@/lib/firebase-server';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import type { Tour } from '@/lib/types';
+import { getAllPackages } from '@/lib/db/sqlite';
 import { resolveUrlTemplates } from '@/lib/url-utils';
 
 const BASE_URL = 'https://happymountainnepal.com'; // Replace with your actual domain
@@ -31,13 +29,9 @@ function stripHtml(html: string): string {
 
 export async function GET() {
     try {
-        const packagesRef = collection(firestore, 'packages');
-        const q = query(packagesRef, where('status', '==', 'published'));
-        const querySnapshot = await getDocs(q);
+        const tours = getAllPackages('published');
 
-        const itemsXml = querySnapshot.docs.map(doc => {
-            const tour = { id: doc.id, ...doc.data() } as Tour;
-            
+        const itemsXml = tours.map(tour => {
             // Use the mainImage object, which has url and caption
             const mainImage = tour.mainImage;
             const imageUrl = mainImage?.url ? resolveUrlTemplates(mainImage.url, BASE_URL) : '';

@@ -6,7 +6,6 @@ import { Toaster } from '@/components/ui/toaster';
 import { WishlistProvider } from '@/context/WishlistContext';
 import { ProgressBar } from '@/components/layout/ProgressBar';
 import { HeaderV3 as Header } from '@/components/layout/HeaderV3';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
 import 'quill/dist/quill.snow.css'; // Import Quill's CSS
 import { ConditionalFooter } from '@/components/layout/ConditionalFooter';
 import { PageViewTracker } from '@/lib/client-logger';
@@ -75,26 +74,24 @@ export default async function RootLayout({
       </head>
       <body className="font-body antialiased">
         <ProgressBar />
-        <FirebaseClientProvider>
-          <WishlistProvider>
-            <AdminControlProvider>
-              <div className="flex flex-col min-h-screen">
-                <div className="relative z-50">
-                  <Header 
-                    initialIsManager={isManager} 
-                    initialProfile={profile} 
-                    initialLinks={(navigationData as any)?.header?.links} 
-                  />
-                </div>
-                <main className="flex-grow pt-16">{children}</main>
-                <ConditionalFooter initialProfile={profile} />
+        <WishlistProvider>
+          <AdminControlProvider>
+            <div className="flex flex-col min-h-screen">
+              <div className="relative z-50">
+                <Header
+                  initialIsManager={isManager}
+                  initialProfile={profile}
+                  initialLinks={(navigationData as any)?.header?.links}
+                />
               </div>
-            </AdminControlProvider>
-            {/* Chatbot removed from here, will be added to specific pages */}
-            <Toaster />
-            <PageViewTracker />
-          </WishlistProvider>
-        </FirebaseClientProvider>
+              <main className="flex-grow pt-16">{children}</main>
+              <ConditionalFooter initialProfile={profile} />
+            </div>
+          </AdminControlProvider>
+          {/* Chatbot removed from here, will be added to specific pages */}
+          <Toaster />
+          <PageViewTracker />
+        </WishlistProvider>
       </body>
     </html>
   );

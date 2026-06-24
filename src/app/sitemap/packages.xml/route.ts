@@ -8,7 +8,8 @@ export async function GET() {
   const tours = getAllPackages('published');
 
   const urls = tours.map((tour) => {
-    const lastMod = new Date(tour.updatedAt || tour.createdAt).toISOString();
+    const datedTour = tour as typeof tour & { updatedAt?: string; createdAt?: string };
+    const lastMod = new Date(datedTour.updatedAt || datedTour.createdAt || new Date().toISOString()).toISOString();
     return `
     <url>
       <loc>${`${BASE_URL}/tours/${tour.slug}`}</loc>

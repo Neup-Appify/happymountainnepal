@@ -1,8 +1,6 @@
 
 import { notFound } from 'next/navigation';
-import { getLocationBySlug, getLocationById, getChildLocations, getPosts } from '@/lib/db/sqlite';
-import { getDocs, query, collection, where, limit } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
+import { getLocationBySlug, getLocationById, getChildLocations, getPosts, getAllPackages } from '@/lib/db/sqlite';
 import { TourCard } from '@/components/TourCard';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -14,16 +12,10 @@ import { BlogCard } from '@/components/BlogCard';
 
 // Helper to fetch tours
 async function getRelatedTours(locationName: string) {
-    if (!firestore) return [];
     try {
-        const q = query(
-            collection(firestore, 'packages'),
-            where('status', '==', 'published'),
-            where('region', 'array-contains', locationName),
-            limit(6)
-        );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
+        return getAllPackages('published')
+            .filter(tour => Array.isArray(tour.region) && tour.region.includes(locationName))
+            .slice(0, 6);
     } catch (error) {
         console.error("Error fetching tours:", error);
         return [];

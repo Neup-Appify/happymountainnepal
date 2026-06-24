@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import type { Tour } from '@/lib/types';
-import { useFirestore } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore'; // Added query, where
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function WishlistPage() {
@@ -16,20 +14,17 @@ export default function WishlistPage() {
   const [wishlistedTours, setWishlistedTours] = useState<Tour[]>([]);
   const [allTours, setAllTours] = useState<Tour[]>([]);
   const [loading, setLoading] = useState(true);
-  const firestore = useFirestore();
   
   useEffect(() => {
-    if (!firestore) return;
     const fetchTours = async () => {
       setLoading(true);
-      const packagesQuery = query(collection(firestore, 'packages'), where('status', '==', 'published')); // Filter by published status
-      const querySnapshot = await getDocs(packagesQuery);
-      const tours = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-      setAllTours(tours);
+      const response = await fetch('/api/packages');
+      const data = await response.json();
+      setAllTours(data.packages || []);
       setLoading(false);
     };
     fetchTours();
-  }, [firestore]);
+  }, []);
   
   useEffect(() => {
     if (allTours.length > 0) {

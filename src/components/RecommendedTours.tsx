@@ -2,8 +2,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Tour } from '@/lib/types';
 import { useWishlist } from '@/context/WishlistContext';
-import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { MinimalTourCard } from './MinimalTourCard';
 import { Skeleton } from './ui/skeleton';
 import { Heart } from 'lucide-react';
@@ -19,7 +17,6 @@ export function RecommendedTours({
   initialType?: 'wishlist' | 'recent' | null 
 }) {
   const { wishlist } = useWishlist();
-  const firestore = useFirestore();
 
   const [recommendedTours, setRecommendedTours] = useState<Tour[]>(initialTours);
   const [recommendationType, setRecommendationType] = useState<'wishlist' | 'recent' | null>(initialType);
@@ -30,19 +27,18 @@ export function RecommendedTours({
     // or if we've already set personalized recommendations, we can skip or refine
     
     async function fetchRecommendations() {
-      if (!firestore) return;
-      
+      const response = await fetch('/api/packages');
+      const data = await response.json();
+      const allTours = (data.packages || []) as Tour[];
+
       // Personalized recommendations require client-side data (wishlist/localstorage)
       // so we always check these on the client
       
       // 1. Prioritize Wishlist
       if (wishlist.length > 0) {
-        // If wishlist is not empty, we MUST fetch from firestore to get current tour data
+        // If wishlist is not empty, fetch current tour data by ID.
         // since we only have IDs in wishlist
-        const q = query(collection(firestore, 'packages'), where('status', '==', 'published'));
-        const snapshot = await getDocs(q);
-        const allTours = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-        const toursMap = new Map(allTours.map(t => [t.id, t]));
+        const toursMap = new Map(allTours.map((t: Tour) => [t.id, t]));
 
         const toursFromWishlist = wishlist
           .map(id => toursMap.get(id))
@@ -60,10 +56,7 @@ export function RecommendedTours({
       // 2. Fallback to Recently Viewed (client-side only)
       const recentlyViewedIds: string[] = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]') : [];
       if (recentlyViewedIds.length > 0) {
-        const q = query(collection(firestore, 'packages'), where('status', '==', 'published'));
-        const snapshot = await getDocs(q);
-        const allTours = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-        const toursMap = new Map(allTours.map(t => [t.id, t]));
+        const toursMap = new Map(allTours.map((t: Tour) => [t.id, t]));
 
         const toursFromHistory = recentlyViewedIds
           .map(id => toursMap.get(id))
@@ -87,17 +80,14 @@ export function RecommendedTours({
       }
 
       // 4. Ultimate fallback if nothing else works
-      const q = query(collection(firestore, 'packages'), where('status', '==', 'published'), limit(DISPLAY_COUNT));
-      const snapshot = await getDocs(q);
-      const tours = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-      setRecommendedTours(tours);
+      setRecommendedTours(allTours.slice(0, DISPLAY_COUNT));
       setRecommendationType(null);
       setIsLoading(false);
     }
     
     fetchRecommendations();
 
-  }, [firestore, wishlist, initialTours]);
+  }, [wishlist, initialTours, initialType]);
 
   if (isLoading) {
     return (

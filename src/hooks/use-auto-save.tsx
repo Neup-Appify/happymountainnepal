@@ -6,7 +6,7 @@ import { useFormContext } from 'react-hook-form';
 import { useDebounce } from './use-debounce';
 import { updateTour } from '@/lib/db';
 import { useToast } from './use-toast';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 
 export type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 

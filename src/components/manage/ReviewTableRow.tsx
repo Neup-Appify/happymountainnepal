@@ -19,7 +19,7 @@ import { DeleteReviewDialog } from '@/components/manage/DeleteReviewDialog';
 import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
 import { ReviewStars } from '../ReviewStars';
-import { Timestamp } from 'firebase/firestore'; // Import Timestamp
+import { Timestamp } from '@/lib/timestamp'; // Import Timestamp
 
 interface ReviewTableRowProps {
   review: ManagedReview;

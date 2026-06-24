@@ -4,12 +4,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Mountain, Search, User, Menu, X, ChevronDown, ChevronRight, LogIn, Phone, Mail, MapPin, Edit } from 'lucide-react';
+import { Mountain, Search, Menu, X, ChevronDown, ChevronRight, Phone, Mail, MapPin, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HeaderV3Nav, type NavLink } from './HeaderV3Nav';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useUser } from '@/firebase';
 import { useSiteProfile } from '@/hooks/use-site-profile';
 import { useHeaderLinks } from '@/hooks/use-navigation-data';
 import { useAdminControl } from '@/context/AdminControlContext';
@@ -235,7 +234,6 @@ export function HeaderV3({ initialIsManager = false, initialProfile, initialLink
   const [isMenuOpen, setMenuOpen] = React.useState(false);
   const [activeSubMenu, setActiveSubMenu] = React.useState<NavLink | null>(null);
   const [activeLevel2Item, setActiveLevel2Item] = React.useState<string | null>(null);
-  const { user, isUserLoading } = useUser();
   const { profile } = useSiteProfile(initialProfile);
   const { links: apiLinks, loading: linksLoading } = useHeaderLinks(initialLinks);
   const whatsappLink = `https://wa.me/${profile?.phone?.replace(/\D/g, '')}`;

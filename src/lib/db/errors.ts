@@ -1,39 +1,36 @@
 
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { SiteError } from '@/lib/types';
-
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as T : null;
-}
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
 export async function logError(errorData: Omit<SiteError, 'id' | 'createdAt'>): Promise<void> {
-    if (!firestore) {
-        console.error("Firestore is not initialized. Cannot log error.");
-        return;
-    }
     try {
-        await addDoc(collection(firestore, 'errors'), {
-            ...errorData,
-            createdAt: serverTimestamp(),
-        });
+        db.prepare(`
+            INSERT INTO errors (id, message, stack, componentStack, pathname, createdAt, context)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            randomUUID(),
+            errorData.message,
+            errorData.stack || null,
+            errorData.componentStack || null,
+            errorData.pathname,
+            new Date().toISOString(),
+            JSON.stringify(errorData.context || null)
+        );
     } catch (error) {
-        console.error('Failed to log error to Firestore:', error);
+        console.error('Failed to log error to SQLite:', error);
     }
 }
 
 export async function getErrors(): Promise<SiteError[]> {
-    if (!firestore) return [];
     try {
-        const errorsRef = collection(firestore, 'errors');
-        const q = query(errorsRef, orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SiteError));
+        const rows = db.prepare('SELECT * FROM errors ORDER BY createdAt DESC').all() as any[];
+        return rows.map(row => ({
+            ...row,
+            context: row.context ? JSON.parse(row.context) : undefined,
+        })) as SiteError[];
     } catch (error: any) {
         console.error("Error fetching errors:", error);
         await logError({ message: `Failed to fetch errors: ${error.message}`, stack: error.stack, pathname: '/manage/site/errors' });
@@ -42,5 +39,10 @@ export async function getErrors(): Promise<SiteError[]> {
 }
 
 export async function getErrorById(id: string): Promise<SiteError | null> {
-    return getDocById<SiteError>('errors', id);
+    const row = db.prepare('SELECT * FROM errors WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return {
+        ...row,
+        context: row.context ? JSON.parse(row.context) : undefined,
+    } as SiteError;
 }

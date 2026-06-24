@@ -136,7 +136,7 @@ export function LogsContent() {
         const csv = [
             ['Timestamp', 'Cookie ID', 'Page', 'Type', 'Method', 'Status', 'User Agent', 'IP', 'Is Bot', 'Referrer'].join(','),
             ...logs.map(log => {
-                // Handle timestamp as either Firestore Timestamp or ISO string
+                // Handle timestamp as either timestamp-like object or ISO string
                 const timestamp = typeof log.timestamp === 'string'
                     ? new Date(log.timestamp)
                     : typeof (log.timestamp as any).toDate === 'function'

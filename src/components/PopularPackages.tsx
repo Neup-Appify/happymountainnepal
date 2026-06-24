@@ -5,15 +5,12 @@ import Link from 'next/link';
 import { Button } from './ui/button';
 import { ArrowRight } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
-import { useFirestore } from '@/firebase';
-import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import type { Tour } from '@/lib/types';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 
 export function PopularPackages({ initialTours = [] }: { initialTours?: Tour[] }) {
-  const firestore = useFirestore();
   const [popularTours, setPopularTours] = useState<Tour[]>(initialTours);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,18 +20,12 @@ export function PopularPackages({ initialTours = [] }: { initialTours?: Tour[] }
       setIsLoading(false);
       return;
     }
-    if (!firestore) return;
     const fetchTours = async () => {
       setIsLoading(true);
       try {
-        const packagesQuery = query(
-          collection(firestore, 'packages'),
-          where('status', '==', 'published'), // Filter by published status
-          orderBy('price', 'desc'),
-          limit(3)
-        );
-        const querySnapshot = await getDocs(packagesQuery);
-        const tours = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
+        const response = await fetch('/api/packages');
+        const data = await response.json();
+        const tours = [...(data.packages || [])].sort((a: Tour, b: Tour) => b.price - a.price).slice(0, 3);
         setPopularTours(tours);
       } catch (error) {
           console.error("Error fetching popular packages:", error);
@@ -43,7 +34,7 @@ export function PopularPackages({ initialTours = [] }: { initialTours?: Tour[] }
       }
     };
     fetchTours();
-  }, [firestore, initialTours]);
+  }, [initialTours]);
 
 
   return (

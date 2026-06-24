@@ -1,25 +1,15 @@
 
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { Redirect } from '@/lib/types';
 import { logError } from './errors';
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
 export async function getRedirects(): Promise<Redirect[]> {
-    if (!firestore) return [];
     try {
-        const redirectsRef = collection(firestore, 'redirects');
-        const q = query(redirectsRef, orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt ? (data.createdAt as any).toDate().toISOString() : new Date().toISOString()
-            } as Redirect;
-        });
+        const rows = db.prepare('SELECT * FROM redirects ORDER BY createdAt DESC').all() as Array<Omit<Redirect, 'permanent'> & { permanent: number }>;
+        return rows.map(row => ({ ...row, permanent: Boolean(row.permanent) }));
     } catch (error: any) {
         console.error("Error fetching redirects:", error);
         await logError({ message: `Failed to fetch redirects: ${error.message}`, stack: error.stack, pathname: '/manage/redirects' });
@@ -28,13 +18,13 @@ export async function getRedirects(): Promise<Redirect[]> {
 }
 
 export async function addRedirect(data: Omit<Redirect, 'id' | 'createdAt'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = await addDoc(collection(firestore, 'redirects'), {
-            ...data,
-            createdAt: serverTimestamp(),
-        });
-        return docRef.id;
+        const id = randomUUID();
+        db.prepare(`
+            INSERT INTO redirects (id, source, destination, permanent, createdAt)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(id, data.source, data.destination, data.permanent ? 1 : 0, new Date().toISOString());
+        return id;
     } catch (error: any) {
         console.error("Error adding redirect: ", error);
         await logError({ message: `Failed to add redirect: ${error.message}`, stack: error.stack, pathname: '/manage/redirects', context: { data } });
@@ -43,9 +33,8 @@ export async function addRedirect(data: Omit<Redirect, 'id' | 'createdAt'>): Pro
 }
 
 export async function deleteRedirect(id: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        await deleteDoc(doc(firestore, 'redirects', id));
+        db.prepare('DELETE FROM redirects WHERE id = ?').run(id);
     } catch (error: any) {
         console.error("Error deleting redirect: ", error);
         await logError({ message: `Failed to delete redirect ${id}: ${error.message}`, stack: error.stack, pathname: `/manage/redirects`, context: { redirectId: id } });

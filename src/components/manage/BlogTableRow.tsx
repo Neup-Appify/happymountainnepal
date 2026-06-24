@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DeleteBlogPostDialog } from './DeleteBlogPostDialog';
 import { Badge } from '../ui/badge';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import { Card, CardContent } from '@/components/ui/card';
 import Image from 'next/image';
 

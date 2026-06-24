@@ -30,15 +30,15 @@ export function useSiteProfile(initialProfile?: SiteProfile | null) {
         console.error("Failed to read from sessionStorage:", error);
       }
 
-      // 2. If not in cache, fetch from Firestore
+      // 2. If not in cache, fetch from SQLite
       try {
         setError(null);
-        const firestoreProfile = await getSiteProfileAction();
-        if (firestoreProfile) {
-          setProfile(firestoreProfile);
+        const siteProfile = await getSiteProfileAction();
+        if (siteProfile) {
+          setProfile(siteProfile);
           // 3. Save to sessionStorage
           try {
-            sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(firestoreProfile));
+            sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(siteProfile));
           } catch (error) {
             console.error("Failed to write to sessionStorage:", error);
           }

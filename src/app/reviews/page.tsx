@@ -1,19 +1,15 @@
 'use client';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import type { ManagedReview } from '@/lib/types'; // Changed from Review
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ReviewStars } from '@/components/ReviewStars';
-import { Timestamp } from 'firebase/firestore'; // Added missing import
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns'; // Import format from date-fns
-import { useFirestore } from '@/firebase';
-import { getAllReviews } from '@/lib/db';
+import { getAllReviews } from '@/lib/db/reviews';
 
 
 export default function ReviewsPage() {
-  const firestore = useFirestore();
   const [allReviews, setAllReviews] = useState<ManagedReview[]>([]); // Changed type
   const [isLoading, setIsLoading] = useState(true);
 

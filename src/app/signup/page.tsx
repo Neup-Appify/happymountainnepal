@@ -16,13 +16,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth, useFirestore } from '@/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { registerAccountAction } from '@/app/actions/accounts';
 
 const formSchema = z.object({
   fullName: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -37,8 +35,6 @@ const formSchema = z.object({
 
 export default function SignupPage() {
   const { toast } = useToast();
-  const auth = useAuth();
-  const firestore = useFirestore();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -56,17 +52,11 @@ export default function SignupPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // 1. Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
-
-      // 2. Create account document in Firestore
-      const accountRef = doc(firestore, 'accounts', user.uid);
-      await setDoc(accountRef, {
-        id: user.uid,
+      await registerAccountAction({
         fullName: values.fullName,
         email: values.email,
         phone: values.phone || '',
+        password: values.password,
       });
 
       toast({

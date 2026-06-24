@@ -8,7 +8,8 @@ export async function GET() {
   const posts = getAllPosts('published');
 
   const urls = posts.map((post) => {
-    const lastMod = new Date(post.date).toISOString();
+    const date = typeof post.date === 'string' ? post.date : post.date.toDate().toISOString();
+    const lastMod = new Date(date).toISOString();
 
     return `
     <url>

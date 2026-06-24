@@ -3,7 +3,7 @@ import type { ManagedReview } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ReviewStars } from '@/components/ReviewStars';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import { Button } from '@/components/ui/button';
 import { Loader2, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';

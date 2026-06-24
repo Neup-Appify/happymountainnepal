@@ -24,7 +24,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import { usePathname } from 'next/navigation';
 
 const departureDateSchema = z.object({

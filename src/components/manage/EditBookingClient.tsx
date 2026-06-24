@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Tour } from '@/lib/types';
 import { useEffect } from 'react';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 
 const departureDateSchema = z.object({
     date: z.date({ required_error: "A date is required." }),

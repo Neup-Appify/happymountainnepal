@@ -5,8 +5,6 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import { ArrowRight } from "lucide-react";
 import { Skeleton } from './ui/skeleton';
-import { useFirestore } from '@/firebase';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import type { BlogPost } from '@/lib/types';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';

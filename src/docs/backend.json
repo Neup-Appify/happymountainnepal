@@ -9,7 +9,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the Account entity, matching the Firebase Auth UID."
+          "description": "Unique identifier for the Account entity."
         },
         "fullName": {
           "type": "string",
@@ -95,18 +95,18 @@
       "password"
     ]
   },
-  "firestore": {
-    "/accounts/{accountId}": {
+  "sqlite": {
+    "accounts": {
       "schema": {
         "$ref": "#/entities/Account"
       },
-      "description": "Stores user account information, where the document ID matches the Firebase Auth UID."
+      "description": "Stores user account information."
     },
-    "/profile/{siteId}": {
+    "profile": {
       "schema": {
         "$ref": "#/entities/SiteProfile"
       },
-      "description": "Stores the site-wide company profile. The document ID should be a unique site identifier, e.g., 'happymountainnepal'."
+      "description": "Stores the site-wide company profile."
     }
   }
 }

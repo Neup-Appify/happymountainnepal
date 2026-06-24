@@ -1,51 +1,55 @@
 'use server';
 
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { PaymentSettings } from '@/lib/types';
+import { db } from './sqlite';
 
 const PAYMENT_SETTINGS_DOC_ID = 'wire-transfer-settings';
 
-export async function getPaymentSettings(): Promise<PaymentSettings | null> {
-    if (!firestore) return null;
-
-    const docRef = doc(firestore, 'payment-settings', PAYMENT_SETTINGS_DOC_ID);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-        // Return default settings if none exist
-        return {
-            id: PAYMENT_SETTINGS_DOC_ID,
-            bankName: '',
-            accountName: '',
-            accountNumber: '',
-            swiftCode: '',
-            iban: '',
-            bankAddress: '',
-            additionalInstructions: '',
-            updatedAt: new Date().toISOString(),
-        };
-    }
-
-    const data = docSnap.data();
+function defaultSettings(): PaymentSettings {
     return {
-        id: docSnap.id,
-        ...data,
-        updatedAt: data.updatedAt instanceof Timestamp
-            ? data.updatedAt.toDate().toISOString()
-            : data.updatedAt,
-    } as PaymentSettings;
+        id: PAYMENT_SETTINGS_DOC_ID,
+        bankName: '',
+        accountName: '',
+        accountNumber: '',
+        swiftCode: '',
+        iban: '',
+        bankAddress: '',
+        additionalInstructions: '',
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+export async function getPaymentSettings(): Promise<PaymentSettings | null> {
+    return (db.prepare('SELECT * FROM paymentSettings WHERE id = ?').get(PAYMENT_SETTINGS_DOC_ID) as PaymentSettings | undefined) || defaultSettings();
 }
 
 export async function updatePaymentSettings(
     settings: Omit<PaymentSettings, 'id' | 'updatedAt'>
 ): Promise<void> {
-    if (!firestore) throw new Error('Database not available');
-
-    const docRef = doc(firestore, 'payment-settings', PAYMENT_SETTINGS_DOC_ID);
-
-    await setDoc(docRef, {
+    db.prepare(`
+        INSERT INTO paymentSettings (
+            id, bankName, accountName, accountNumber, swiftCode, iban,
+            bankAddress, additionalInstructions, updatedAt
+        ) VALUES (
+            @id, @bankName, @accountName, @accountNumber, @swiftCode, @iban,
+            @bankAddress, @additionalInstructions, @updatedAt
+        )
+        ON CONFLICT(id) DO UPDATE SET
+            bankName = excluded.bankName,
+            accountName = excluded.accountName,
+            accountNumber = excluded.accountNumber,
+            swiftCode = excluded.swiftCode,
+            iban = excluded.iban,
+            bankAddress = excluded.bankAddress,
+            additionalInstructions = excluded.additionalInstructions,
+            updatedAt = excluded.updatedAt
+    `).run({
+        id: PAYMENT_SETTINGS_DOC_ID,
         ...settings,
-        updatedAt: Timestamp.now(),
-    }, { merge: true });
+        swiftCode: settings.swiftCode || '',
+        iban: settings.iban || '',
+        bankAddress: settings.bankAddress || '',
+        additionalInstructions: settings.additionalInstructions || '',
+        updatedAt: new Date().toISOString(),
+    });
 }

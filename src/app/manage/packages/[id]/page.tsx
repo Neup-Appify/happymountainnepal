@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PenSquare } from 'lucide-react';
 import { format } from 'date-fns';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import type { Tour } from '@/lib/types';
 import { DownloadDocxButton } from '@/components/manage/DownloadDocxButton';
 

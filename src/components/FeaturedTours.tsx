@@ -5,14 +5,11 @@ import Link from 'next/link';
 import { Button } from './ui/button';
 import { ArrowRight } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
-import { useFirestore } from '@/firebase';
-import { collection, query, limit, getDocs, where } from 'firebase/firestore'; // Added where
 import type { Tour } from '@/lib/types';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export function FeaturedTours({ initialTours = [] }: { initialTours?: Tour[] }) {
-  const firestore = useFirestore();
   const [featuredTours, setFeaturedTours] = useState<Tour[]>(initialTours);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -22,18 +19,12 @@ export function FeaturedTours({ initialTours = [] }: { initialTours?: Tour[] }) 
       setIsLoading(false);
       return;
     }
-    if (!firestore) return;
     const fetchTours = async () => {
       setIsLoading(true);
       try {
-        const packagesQuery = query(
-          collection(firestore, 'packages'),
-          where('status', '==', 'published'), // Filter by published status
-          limit(3)
-        );
-        const querySnapshot = await getDocs(packagesQuery);
-        const tours = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tour));
-        setFeaturedTours(tours);
+        const response = await fetch('/api/packages');
+        const data = await response.json();
+        setFeaturedTours((data.packages || []).slice(0, 3));
       } catch (error) {
         console.error("Error fetching featured tours:", error);
       } finally {
@@ -41,7 +32,7 @@ export function FeaturedTours({ initialTours = [] }: { initialTours?: Tour[] }) 
       }
     };
     fetchTours();
-  }, [firestore, initialTours]);
+  }, [initialTours]);
 
 
   return (

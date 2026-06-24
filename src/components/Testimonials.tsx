@@ -1,12 +1,11 @@
 'use client';
-import { useFirestore } from '@/firebase';
 import type { ManagedReview } from '@/lib/types';
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { ArrowRight } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
 import { useState, useEffect } from 'react';
-import { getFiveStarReviews } from '@/lib/db';
+import { getFiveStarReviews } from '@/lib/db/reviews';
 import { useSiteProfile } from '@/hooks/use-site-profile';
 import {
   Carousel,
@@ -20,7 +19,6 @@ import Autoplay from "embla-carousel-autoplay"
 import { Card, CardContent } from './ui/card'; // Added import
 
 export function Testimonials({ initialReviews = [], initialProfile }: { initialReviews?: ManagedReview[], initialProfile?: any }) {
-  const firestore = useFirestore();
   const [reviews, setReviews] = useState<ManagedReview[]>(initialReviews);
   const { profile, isLoading: isProfileLoading } = useSiteProfile(initialProfile);
   const [isReviewsLoading, setIsReviewsLoading] = useState(!initialReviews || initialReviews.length === 0);
@@ -35,7 +33,6 @@ export function Testimonials({ initialReviews = [], initialProfile }: { initialR
       return;
     }
 
-    if (!firestore) return;
     const fetchReviews = async () => {
       setIsReviewsLoading(true);
       try {
@@ -48,7 +45,7 @@ export function Testimonials({ initialReviews = [], initialProfile }: { initialR
       }
     };
     fetchReviews();
-  }, [firestore, initialReviews]);
+  }, [initialReviews]);
   
   return (
     <section className="py-16 lg:py-24">

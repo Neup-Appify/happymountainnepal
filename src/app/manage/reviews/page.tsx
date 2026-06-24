@@ -18,17 +18,14 @@ import {
 } from '@/components/ui/table';
 import { PlusCircle, Star } from 'lucide-react';
 import { ReviewTableRow } from '@/components/manage/ReviewTableRow';
-import { useFirestore } from '@/firebase';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import type { ManagedReview } from '@/lib/types';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAllReviews } from '@/lib/db';
+import { getAllReviews } from '@/lib/db/reviews';
 
 export default function ReviewsListPage() {
   const [reviews, setReviews] = useState<ManagedReview[]>([]);
   const [loading, setLoading] = useState(true);
-  const firestore = useFirestore(); // Although getAllReviews is a server action, useFirestore is still needed for client-side context if other Firebase operations were here.
 
   useEffect(() => {
     const fetchReviews = async () => {

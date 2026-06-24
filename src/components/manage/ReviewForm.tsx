@@ -303,7 +303,7 @@ export function ReviewForm({ review }: ReviewFormProps) {
                       <FormItem>
                         <FormLabel>User ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., firebase-user-id-123" {...field} disabled={isPending} />
+                          <Input placeholder="e.g., account-id-123" {...field} disabled={isPending} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

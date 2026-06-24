@@ -1,8 +1,8 @@
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, Timestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import { logError } from './errors';
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
 export type FeedbackEntry = {
     id: string;
@@ -20,10 +20,10 @@ export type FeedbackEntry = {
 
 export type Feedback = {
     id: string;
-    createdAt: Timestamp | string;
+    createdAt: string;
     title: string;
     description?: string;
-    deadline?: Timestamp | string;
+    deadline?: string;
     status?: 'open' | 'in-progress' | 'completed';
     priority?: 'low' | 'medium' | 'high';
     issuedTo?: string[]; // Array of team member IDs
@@ -31,17 +31,23 @@ export type Feedback = {
 };
 
 export async function saveFeedback(feedbackData: Omit<Feedback, 'id' | 'createdAt' | 'entries'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = await addDoc(collection(firestore, 'feedbacks'), {
-            ...feedbackData,
-            createdAt: serverTimestamp(),
-            entries: [],
-            status: feedbackData.status || 'open',
-            priority: feedbackData.priority || 'medium',
-            issuedTo: feedbackData.issuedTo || [],
-        });
-        return docRef.id;
+        const id = randomUUID();
+        db.prepare(`
+            INSERT INTO feedbacks (id, title, description, deadline, status, priority, issuedTo, entries, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            id,
+            feedbackData.title,
+            feedbackData.description || null,
+            feedbackData.deadline || null,
+            feedbackData.status || 'open',
+            feedbackData.priority || 'medium',
+            JSON.stringify(feedbackData.issuedTo || []),
+            JSON.stringify([]),
+            new Date().toISOString()
+        );
+        return id;
     } catch (error: any) {
         console.error("[DB saveFeedback] Error saving feedback: ", error);
         await logError({
@@ -54,23 +60,18 @@ export async function saveFeedback(feedbackData: Omit<Feedback, 'id' | 'createdA
     }
 }
 
+function mapFeedback(row: any): Feedback {
+    return {
+        ...row,
+        issuedTo: row.issuedTo ? JSON.parse(row.issuedTo) : [],
+        entries: row.entries ? JSON.parse(row.entries) : [],
+    } as Feedback;
+}
+
 export async function getFeedbacks(limitCount: number = 10): Promise<Feedback[]> {
-    if (!firestore) return [];
     try {
-        const feedbacksRef = collection(firestore, 'feedbacks');
-        const q = query(feedbacksRef, orderBy('createdAt', 'desc'), limit(limitCount));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString(),
-                deadline: data.deadline ? (data.deadline as Timestamp)?.toDate().toISOString() : undefined,
-                entries: data.entries || [],
-                issuedTo: data.issuedTo || [],
-            } as Feedback;
-        });
+        const rows = db.prepare('SELECT * FROM feedbacks ORDER BY createdAt DESC LIMIT ?').all(limitCount) as any[];
+        return rows.map(mapFeedback);
     } catch (error: any) {
         console.error("Error fetching feedbacks: ", error);
         await logError({ message: `Failed to fetch feedbacks: ${error.message}`, stack: error.stack, pathname: '/manage/feedbacks' });
@@ -79,24 +80,9 @@ export async function getFeedbacks(limitCount: number = 10): Promise<Feedback[]>
 }
 
 export async function getFeedback(id: string): Promise<Feedback | null> {
-    if (!firestore) return null;
     try {
-        const docRef = doc(firestore, 'feedbacks', id);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            return {
-                id: docSnap.id,
-                ...data,
-                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString(),
-                deadline: data.deadline ? (data.deadline as Timestamp)?.toDate().toISOString() : undefined,
-                entries: data.entries || [],
-                issuedTo: data.issuedTo || [],
-            } as Feedback;
-        } else {
-            return null;
-        }
+        const row = db.prepare('SELECT * FROM feedbacks WHERE id = ?').get(id) as any;
+        return row ? mapFeedback(row) : null;
     } catch (error: any) {
         console.error(`Error fetching feedback ${id}: `, error);
         await logError({ message: `Failed to fetch feedback ${id}: ${error.message}`, stack: error.stack, pathname: `/manage/feedbacks/${id}` });
@@ -105,18 +91,24 @@ export async function getFeedback(id: string): Promise<Feedback | null> {
 }
 
 export async function updateFeedback(id: string, updateData: Partial<Feedback>): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = doc(firestore, 'feedbacks', id);
-
-        if (updateData.deadline && typeof updateData.deadline === 'string') {
-            updateData.deadline = Timestamp.fromDate(new Date(updateData.deadline));
-        }
-
-        delete (updateData as any).createdAt;
-        delete (updateData as any).id;
-
-        await updateDoc(docRef, updateData);
+        const current = await getFeedback(id);
+        if (!current) throw new Error("Feedback not found");
+        const merged = { ...current, ...updateData, id, createdAt: current.createdAt };
+        db.prepare(`
+            UPDATE feedbacks
+            SET title = ?, description = ?, deadline = ?, status = ?, priority = ?, issuedTo = ?, entries = ?
+            WHERE id = ?
+        `).run(
+            merged.title,
+            merged.description || null,
+            merged.deadline || null,
+            merged.status || 'open',
+            merged.priority || 'medium',
+            JSON.stringify(merged.issuedTo || []),
+            JSON.stringify(merged.entries || []),
+            id
+        );
     } catch (error: any) {
         console.error(`Error updating feedback ${id}: `, error);
         await logError({
@@ -130,17 +122,10 @@ export async function updateFeedback(id: string, updateData: Partial<Feedback>):
 }
 
 export async function addFeedbackEntry(id: string, entry: FeedbackEntry): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = doc(firestore, 'feedbacks', id);
-        const docSnap = await getDoc(docRef);
-
-        if (!docSnap.exists()) throw new Error("Feedback not found");
-
-        const currentEntries = docSnap.data().entries || [];
-        const newEntries = [...currentEntries, entry];
-
-        await updateDoc(docRef, { entries: newEntries });
+        const feedback = await getFeedback(id);
+        if (!feedback) throw new Error("Feedback not found");
+        await updateFeedback(id, { entries: [...(feedback.entries || []), entry] });
     } catch (error: any) {
         console.error(`Error adding entry to feedback ${id}: `, error);
         throw error;
@@ -148,19 +133,13 @@ export async function addFeedbackEntry(id: string, entry: FeedbackEntry): Promis
 }
 
 export async function updateFeedbackEntry(feedbackId: string, entryId: string, updates: Partial<FeedbackEntry>): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
     try {
-        const docRef = doc(firestore, 'feedbacks', feedbackId);
-        const docSnap = await getDoc(docRef);
-
-        if (!docSnap.exists()) throw new Error("Feedback not found");
-
-        const currentEntries = docSnap.data().entries || [];
-        const newEntries = currentEntries.map((e: FeedbackEntry) =>
+        const feedback = await getFeedback(feedbackId);
+        if (!feedback) throw new Error("Feedback not found");
+        const newEntries = (feedback.entries || []).map((e: FeedbackEntry) =>
             e.id === entryId ? { ...e, ...updates } : e
         );
-
-        await updateDoc(docRef, { entries: newEntries });
+        await updateFeedback(feedbackId, { entries: newEntries });
     } catch (error: any) {
         console.error(`Error updating entry in feedback ${feedbackId}: `, error);
         throw error;

@@ -2,7 +2,7 @@
 'use client';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import type { BlogPost } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMemo } from 'react';

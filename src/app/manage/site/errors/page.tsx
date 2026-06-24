@@ -22,27 +22,21 @@ import { ArrowRight, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import type { SiteError } from '@/lib/types';
-import { useFirestore } from '@/firebase';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getErrors } from '@/lib/db/errors';
 
 export default function ErrorsPage() {
   const [errors, setErrors] = useState<SiteError[]>([]);
   const [loading, setLoading] = useState(true);
-  const firestore = useFirestore();
 
   useEffect(() => {
-    if (!firestore) return;
     const fetchErrors = async () => {
       setLoading(true);
-      const errorsRef = collection(firestore, 'errors');
-      const q = query(errorsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      setErrors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SiteError)));
+      setErrors(await getErrors());
       setLoading(false);
     };
     fetchErrors();
-  }, [firestore]);
+  }, []);
 
 
   return (
@@ -78,7 +72,7 @@ export default function ErrorsPage() {
                     <TableCell className="font-medium max-w-sm truncate break-words">{error.message}</TableCell>
                     <TableCell><Badge variant="outline">{error.pathname}</Badge></TableCell>
                     <TableCell>
-                      {error.createdAt?.toDate ? formatDistanceToNow(error.createdAt.toDate(), { addSuffix: true }) : 'N/A'}
+                      {error.createdAt ? formatDistanceToNow(new Date(error.createdAt as unknown as string), { addSuffix: true }) : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right">
                        <Button asChild variant="ghost" size="sm">

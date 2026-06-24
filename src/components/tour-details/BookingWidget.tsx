@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Heart } from 'lucide-react';
 import { useWishlist } from '@/context/WishlistContext';
 import { cn } from '@/lib/utils';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@/lib/timestamp';
 import Link from 'next/link'; // Import Link
 
 interface BookingWidgetProps {

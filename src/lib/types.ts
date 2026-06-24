@@ -1,6 +1,6 @@
 
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from '@/lib/timestamp';
 
 export interface ImageWithCaption {
   url: string;

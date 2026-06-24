@@ -1,80 +1,134 @@
-
 'use server';
 
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, Timestamp, doc, updateDoc, deleteDoc, where, limit as firestoreLimit, startAfter, getDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
-import type { ManagedReview, OnSiteReview, OffSiteReview } from '@/lib/types';
-import { logError } from './errors';
-import { getAllToursForSelect, getTourNameById } from './tours';
+import type { ManagedReview } from '@/lib/types';
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as T : null;
+interface ReviewRow {
+    id: string;
+    type: 'onSite' | 'offSite' | null;
+    rating: number;
+    author: string;
+    userRole: string | null;
+    comment: string;
+    date: string;
+    status: string;
+    source: string;
+    packageId: string | null;
+    userId: string | null;
+    originalReviewUrl: string | null;
+    reviewMedia: string | null;
+    createdAt: string;
+}
+
+function toIsoDate(value: unknown): string {
+    if (!value) return new Date().toISOString();
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'string') return value;
+    if (typeof (value as any).toDate === 'function') return (value as any).toDate().toISOString();
+    return new Date(value as any).toISOString();
+}
+
+function mapReview(row: ReviewRow): ManagedReview {
+    const type = row.type || (row.source === 'website' ? 'onSite' : 'offSite');
+    const base = {
+        id: row.id,
+        type,
+        reviewedOn: row.date,
+        userName: row.author,
+        userRole: row.userRole || undefined,
+        reviewFor: row.packageId,
+        reviewBody: row.comment,
+        reviewMedia: row.reviewMedia ? JSON.parse(row.reviewMedia) : undefined,
+        stars: row.rating as 1 | 2 | 3 | 4 | 5,
+    };
+
+    if (type === 'onSite') {
+        return {
+            ...base,
+            type: 'onSite',
+            userId: row.userId || 'anonymous',
+            reviewFor: row.packageId || 'general',
+        };
+    }
+
+    return {
+        ...base,
+        type: 'offSite',
+        originalReviewUrl: row.originalReviewUrl || '',
+    };
+}
+
+function reviewToRow(id: string, data: Partial<ManagedReview>, existing?: ReviewRow) {
+    return {
+        id,
+        type: data.type || existing?.type || 'offSite',
+        rating: data.stars || existing?.rating || 5,
+        author: data.userName || existing?.author || '',
+        userRole: data.userRole || existing?.userRole || null,
+        comment: data.reviewBody || existing?.comment || '',
+        date: data.reviewedOn ? toIsoDate(data.reviewedOn) : existing?.date || new Date().toISOString(),
+        status: existing?.status || 'approved',
+        source: data.type === 'onSite' ? 'website' : existing?.source || 'external',
+        packageId: data.reviewFor || existing?.packageId || null,
+        userId: data.type === 'onSite' ? data.userId : existing?.userId || null,
+        originalReviewUrl: data.type === 'offSite' ? data.originalReviewUrl : existing?.originalReviewUrl || null,
+        reviewMedia: JSON.stringify(data.reviewMedia || (existing?.reviewMedia ? JSON.parse(existing.reviewMedia) : [])),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+    };
 }
 
 export async function addReview(data: Omit<ManagedReview, 'id'>): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = await addDoc(collection(firestore, 'reviews'), {
-        ...data,
-        reviewedOn: Timestamp.fromDate(new Date(data.reviewedOn as any)),
-    });
-    return docRef.id;
+    const id = randomUUID();
+    const row = reviewToRow(id, data as Partial<ManagedReview>);
+    db.prepare(`
+        INSERT INTO reviews (
+            id, type, rating, author, userRole, comment, date, status, source,
+            packageId, userId, originalReviewUrl, reviewMedia, createdAt
+        ) VALUES (
+            @id, @type, @rating, @author, @userRole, @comment, @date, @status, @source,
+            @packageId, @userId, @originalReviewUrl, @reviewMedia, @createdAt
+        )
+    `).run(row);
+    return id;
 }
 
 export async function updateReview(id: string, data: Partial<Omit<ManagedReview, 'id'>>) {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'reviews', id);
-    const updateData: Partial<Omit<ManagedReview, 'id'>> = { ...data };
-    if (updateData.reviewedOn && updateData.reviewedOn instanceof Date) {
-        updateData.reviewedOn = Timestamp.fromDate(updateData.reviewedOn);
-    }
-    await updateDoc(docRef, updateData);
+    const existing = db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as ReviewRow | undefined;
+    if (!existing) throw new Error('Review not found.');
+    const row = reviewToRow(id, data as Partial<ManagedReview>, existing);
+    db.prepare(`
+        UPDATE reviews
+        SET type = @type, rating = @rating, author = @author, userRole = @userRole,
+            comment = @comment, date = @date, status = @status, source = @source,
+            packageId = @packageId, userId = @userId, originalReviewUrl = @originalReviewUrl,
+            reviewMedia = @reviewMedia
+        WHERE id = @id
+    `).run(row);
 }
 
 export async function deleteReview(id: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    await deleteDoc(doc(firestore, 'reviews', id));
+    db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
 }
 
 export async function getReviewById(id: string): Promise<ManagedReview | null> {
-    return getDocById<ManagedReview>('reviews', id);
+    const row = db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as ReviewRow | undefined;
+    return row ? mapReview(row) : null;
 }
 
 export async function getAllReviews(): Promise<ManagedReview[]> {
-    if (!firestore) return [];
-    const reviewsRef = collection(firestore, 'reviews');
-    const q = query(reviewsRef, orderBy('reviewedOn', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data() as ManagedReview;
-        return {
-            ...data,
-            id: doc.id,
-            reviewedOn: (data.reviewedOn as Timestamp).toDate().toISOString()
-        } as ManagedReview;
-    });
+    const rows = db.prepare('SELECT * FROM reviews ORDER BY date DESC').all() as ReviewRow[];
+    return rows.map(mapReview);
 }
 
 export async function getFiveStarReviews(): Promise<ManagedReview[]> {
-    if (!firestore) return [];
-    const reviewsRef = collection(firestore, 'reviews');
-    const q = query(
-        reviewsRef,
-        where('stars', '==', 5),
-        orderBy('reviewedOn', 'desc'),
-        firestoreLimit(10)
-    );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data() as ManagedReview;
-        return {
-            ...data,
-            id: doc.id,
-            reviewedOn: (data.reviewedOn as Timestamp).toDate().toISOString()
-        } as ManagedReview;
-    });
+    const rows = db.prepare(`
+        SELECT * FROM reviews
+        WHERE rating = 5
+        ORDER BY date DESC
+        LIMIT 10
+    `).all() as ReviewRow[];
+    return rows.map(mapReview);
 }
 
 interface PaginatedReviewsResult {
@@ -85,49 +139,32 @@ interface PaginatedReviewsResult {
 
 const REVIEWS_PER_PAGE = 5;
 
+function paginateRows(rows: ReviewRow[], lastDocId?: string | null): PaginatedReviewsResult {
+    const start = lastDocId ? rows.findIndex(row => row.id === lastDocId) + 1 : 0;
+    const page = rows.slice(Math.max(start, 0), Math.max(start, 0) + REVIEWS_PER_PAGE + 1);
+    const hasMore = page.length > REVIEWS_PER_PAGE;
+    const reviews = (hasMore ? page.slice(0, REVIEWS_PER_PAGE) : page).map(mapReview);
+    return {
+        reviews,
+        lastDocId: reviews.length > 0 ? reviews[reviews.length - 1].id : null,
+        hasMore,
+    };
+}
+
 export async function getReviewsForPackage(packageId: string, lastDocId?: string | null): Promise<PaginatedReviewsResult> {
-    if (!firestore) throw new Error("Database not available.");
-    let q = query(
-        collection(firestore, 'reviews'),
-        where('reviewFor', '==', packageId),
-        orderBy('reviewedOn', 'desc'),
-        firestoreLimit(REVIEWS_PER_PAGE + 1)
-    );
-    if (lastDocId) {
-        const lastDocSnapshot = await getDoc(doc(firestore, 'reviews', lastDocId));
-        if (lastDocSnapshot.exists()) {
-            q = query(q, startAfter(lastDocSnapshot));
-        }
-    }
-    const querySnapshot = await getDocs(q);
-    const fetchedReviews = querySnapshot.docs.map(doc => ({
-        id: doc.id, ...doc.data(), reviewedOn: (doc.data().reviewedOn as Timestamp).toDate().toISOString()
-    } as ManagedReview));
-    const hasMore = fetchedReviews.length > REVIEWS_PER_PAGE;
-    const reviewsToReturn = hasMore ? fetchedReviews.slice(0, REVIEWS_PER_PAGE) : fetchedReviews;
-    const newLastDocId = reviewsToReturn.length > 0 ? reviewsToReturn[reviewsToReturn.length - 1].id : null;
-    return { reviews: reviewsToReturn, lastDocId: newLastDocId, hasMore };
+    const rows = db.prepare(`
+        SELECT * FROM reviews
+        WHERE packageId = ?
+        ORDER BY date DESC
+    `).all(packageId) as ReviewRow[];
+    return paginateRows(rows, lastDocId);
 }
 
 export async function getGeneralReviews(excludePackageId: string, lastDocId?: string | null): Promise<PaginatedReviewsResult> {
-    if (!firestore) throw new Error("Database not available.");
-    let q = query(
-        collection(firestore, 'reviews'),
-        where('reviewFor', '!=', excludePackageId),
-        orderBy('reviewFor'),
-        orderBy('reviewedOn', 'desc'),
-        firestoreLimit(REVIEWS_PER_PAGE + 1)
-    );
-    if (lastDocId) {
-        const lastDocSnapshot = await getDoc(doc(firestore, 'reviews', lastDocId));
-        if (lastDocSnapshot.exists()) {
-            q = query(q, startAfter(lastDocSnapshot));
-        }
-    }
-    const querySnapshot = await getDocs(q);
-    const fetchedReviews = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManagedReview));
-    const hasMore = fetchedReviews.length > REVIEWS_PER_PAGE;
-    const reviewsToReturn = hasMore ? fetchedReviews.slice(0, REVIEWS_PER_PAGE) : fetchedReviews;
-    const newLastDocId = reviewsToReturn.length > 0 ? reviewsToReturn[reviewsToReturn.length - 1].id : null;
-    return { reviews: reviewsToReturn, lastDocId: newLastDocId, hasMore };
+    const rows = db.prepare(`
+        SELECT * FROM reviews
+        WHERE packageId IS NULL OR packageId != ?
+        ORDER BY date DESC
+    `).all(excludePackageId) as ReviewRow[];
+    return paginateRows(rows, lastDocId);
 }

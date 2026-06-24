@@ -1,129 +1,130 @@
-
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, Timestamp, doc, updateDoc, deleteDoc, where, limit as firestoreLimit, startAfter, getDoc, FieldPath,getCountFromServer } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { BlogPost, ImportedBlogData } from '@/lib/types';
 import { slugify } from "@/lib/utils";
 import { logError } from './errors';
+import {
+    checkPostSlugAvailability,
+    deletePost,
+    getAllPosts,
+    getPostById,
+    getPostBySlug,
+    getPosts,
+    savePost,
+} from './sqlite';
 
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) return null;
-    const docRef = doc(firestore, collectionName, id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as T : null;
-}
-
-async function getDocBySlug<T>(collectionName: string, slug: string): Promise<T | null> {
-    if (!firestore) return null;
-    const q = query(collection(firestore, collectionName), where('slug', '==', slug), firestoreLimit(1));
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) return null;
-    const docSnap = querySnapshot.docs[0];
-    return { id: docSnap.id, ...docSnap.data() } as T;
+function generateKeywords(post: Pick<BlogPost, 'title' | 'author'> & { tags?: string[] }) {
+    const keywords = new Set<string>();
+    post.title.toLowerCase().split(' ').forEach(word => keywords.add(word.replace(/[^a-z0-9]/gi, '')));
+    post.author.toLowerCase().split(' ').forEach(word => keywords.add(word.replace(/[^a-z0-9]/gi, '')));
+    post.tags?.forEach(tag => keywords.add(tag.toLowerCase()));
+    return Array.from(keywords).filter(Boolean);
 }
 
 export async function checkBlogSlugAvailability(slug: string, excludePostId?: string): Promise<boolean> {
-    if (!firestore) throw new Error("Database not available.");
-    const q = query(collection(firestore, 'blogPosts'), where('slug', '==', slug));
-    const querySnapshot = await getDocs(q);
-    if (excludePostId) {
-        return querySnapshot.docs.every(doc => doc.id === excludePostId);
-    }
-    return querySnapshot.empty;
+    return checkPostSlugAvailability(slug, excludePostId);
 }
 
 export async function createBlogPost(): Promise<string | null> {
-    if (!firestore) return null;
-    const newPost: Omit<BlogPost, 'id' | 'slug' | 'date'> & { date: any } = {
-        title: 'New Untitled Post',
-        content: '<p>Start writing your amazing blog post here...</p>',
-        excerpt: '',
-        author: 'Admin',
-        authorPhoto: 'https://picsum.photos/seed/admin-avatar/400/400',
-        date: serverTimestamp(),
-        image: 'https://picsum.photos/seed/blog-placeholder/800/500',
-        status: 'draft',
-        tags: [],
-        metaInformation: '',
-        searchKeywords: [],
-    };
-    const docRef = await addDoc(collection(firestore, 'blogPosts'), newPost);
-    return docRef.id;
+    try {
+        const id = `post_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const title = 'New Untitled Post';
+        savePost({
+            id,
+            slug: slugify(`${title}-${id}`),
+            title,
+            content: '<p>Start writing your amazing blog post here...</p>',
+            excerpt: '',
+            author: 'Admin',
+            authorPhoto: 'https://picsum.photos/seed/admin-avatar/400/400',
+            createdAt: new Date().toISOString(),
+            image: 'https://picsum.photos/seed/blog-placeholder/800/500',
+            status: 'draft',
+            tags: [],
+            metaInformation: '',
+            searchKeywords: [],
+        });
+        return id;
+    } catch (error: any) {
+        await logError({ message: error.message, stack: error.stack, pathname: 'createBlogPost' });
+        return null;
+    }
 }
 
 export async function createBlogPostWithData(data: ImportedBlogData): Promise<string | null> {
-    if (!firestore) throw new Error("Database not available.");
-
     const slug = slugify(data.title);
     if (!await checkBlogSlugAvailability(slug)) {
         throw new Error(`A blog post with the slug '${slug}' already exists.`);
     }
 
-    const keywords = new Set<string>();
-    data.title.toLowerCase().split(' ').forEach(word => keywords.add(word));
-    data.author?.toLowerCase().split(' ').forEach(word => keywords.add(word));
-
-    const newPost: Omit<BlogPost, 'id' | 'slug' | 'date'> & { date: any } = {
+    const id = `post_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    savePost({
+        id,
+        slug,
         title: data.title,
         content: data.content,
         excerpt: data.excerpt,
         author: data.author || 'Admin',
         authorPhoto: '',
-        date: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         image: data.image,
         status: 'draft',
+        tags: [],
         metaInformation: '',
-        searchKeywords: Array.from(keywords).filter(Boolean),
-    };
-    const docRef = await addDoc(collection(firestore, 'blogPosts'), newPost);
-    await updateDoc(docRef, { slug });
-    return docRef.id;
+        searchKeywords: generateKeywords({ title: data.title, author: data.author || 'Admin' }),
+    });
+    return id;
 }
 
 export async function saveBlogPost(id: string | undefined, data: Omit<BlogPost, 'id' | 'date' | 'searchKeywords'> & { date?: string }): Promise<string> {
-    if (!firestore) throw new Error("Database not available.");
-
-    const keywords = new Set<string>();
-    data.title.toLowerCase().split(' ').forEach(word => keywords.add(word.replace(/[^a-z0-9]/gi, '')));
-    data.author.toLowerCase().split(' ').forEach(word => keywords.add(word.replace(/[^a-z0-9]/gi, '')));
-    data.tags?.forEach(tag => keywords.add(tag.toLowerCase()));
-    
-    const finalData = { ...data, searchKeywords: Array.from(keywords).filter(Boolean) };
-
-    if (id) {
-        // Update existing post
-        const docRef = doc(firestore, 'blogPosts', id);
-        await updateDoc(docRef, finalData);
-        return id;
-    } else {
-        // Create new post
-        const newPost = {
-            ...finalData,
-            date: serverTimestamp(),
-        };
-        const docRef = await addDoc(collection(firestore, 'blogPosts'), newPost);
-        return docRef.id;
-    }
+    const postId = id || `post_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const existing = id ? getPostById(id) : null;
+    savePost({
+        id: postId,
+        slug: data.slug,
+        title: data.title,
+        excerpt: data.excerpt,
+        content: data.content,
+        author: data.author,
+        authorPhoto: data.authorPhoto,
+        createdAt: data.date || (existing?.date as string) || new Date().toISOString(),
+        image: data.image,
+        tags: data.tags || [],
+        metaInformation: data.metaInformation || '',
+        status: data.status,
+        searchKeywords: generateKeywords({ title: data.title, author: data.author, tags: data.tags }),
+    });
+    return postId;
 }
 
 export async function updateBlogPost(id: string, data: Partial<Omit<BlogPost, 'id'>>) {
-    if (!firestore) throw new Error("Database not available.");
-    const docRef = doc(firestore, 'blogPosts', id);
-    await updateDoc(docRef, data);
+    const existing = getPostById(id);
+    if (!existing) throw new Error('Blog post not found.');
+    await saveBlogPost(id, {
+        slug: data.slug || existing.slug,
+        title: data.title || existing.title,
+        excerpt: data.excerpt || existing.excerpt,
+        content: data.content || existing.content,
+        author: data.author || existing.author,
+        authorPhoto: data.authorPhoto || existing.authorPhoto,
+        date: (data.date as string) || (existing.date as string),
+        image: data.image || existing.image,
+        tags: data.tags || existing.tags || [],
+        metaInformation: data.metaInformation || existing.metaInformation || '',
+        status: data.status || existing.status,
+    });
 }
 
 export async function deleteBlogPost(id: string) {
-    if (!firestore) throw new Error("Database not available.");
-    await deleteDoc(doc(firestore, 'blogPosts', id));
+    deletePost(id);
 }
 
 export async function getBlogPostById(id: string): Promise<BlogPost | null> {
-    return getDocById<BlogPost>('blogPosts', id);
+    return getPostById(id);
 }
 
 export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> {
-    return getDocBySlug<BlogPost>('blogPosts', slug);
+    return getPostBySlug(slug);
 }
 
 export async function getBlogPosts(options?: {
@@ -133,76 +134,13 @@ export async function getBlogPosts(options?: {
     search?: string;
     tags?: string[];
 }): Promise<{ posts: BlogPost[]; hasMore: boolean; totalPages: number; totalCount: number; }> {
-    if (!firestore) return { posts: [], hasMore: false, totalPages: 0, totalCount: 0 };
-
-    const limit = options?.limit || 10;
-    const page = options?.page || 1;
-    const searchTerm = options?.search?.toLowerCase().trim() || '';
-    const tags = options?.tags || [];
-
-    let baseQuery = query(collection(firestore, 'blogPosts'));
-    
-    if (options?.status) {
-        baseQuery = query(baseQuery, where('status', '==', options.status));
-    }
-    
-    if (searchTerm) {
-        baseQuery = query(baseQuery, where('searchKeywords', 'array-contains', searchTerm));
-    }
-
-    if (tags.length > 0) {
-        baseQuery = query(baseQuery, where('tags', 'array-contains-any', tags));
-    }
-
-    const countSnapshot = await getCountFromServer(baseQuery);
-    const totalCount = countSnapshot.data().count;
-    const totalPages = Math.ceil(totalCount / limit);
-    
-    let paginatedQuery = query(baseQuery, orderBy('date', 'desc'), firestoreLimit(limit));
-
-    if (page > 1) {
-        const offset = (page - 1) * limit;
-        const cursorQuery = query(baseQuery, orderBy('date', 'desc'), firestoreLimit(offset));
-        const cursorSnapshot = await getDocs(cursorQuery);
-        const lastVisible = cursorSnapshot.docs[cursorSnapshot.docs.length - 1];
-        if (lastVisible) {
-            paginatedQuery = query(paginatedQuery, startAfter(lastVisible));
-        }
-    }
-
-    const postsSnapshot = await getDocs(paginatedQuery);
-    
-    const posts = postsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            date: data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date
-        } as BlogPost;
-    });
-
-    return { 
-        posts, 
-        hasMore: page < totalPages, 
-        totalPages, 
-        totalCount 
-    };
+    return getPosts(options);
 }
 
-
 export async function getBlogPostCount(status?: 'published' | 'draft'): Promise<number> {
-    if (!firestore) return 0;
-    let q = query(collection(firestore, 'blogPosts'));
-    if (status) {
-        q = query(q, where('status', '==', status));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.size;
+    return getPosts({ limit: 1, page: 1, status }).totalCount;
 }
 
 export async function getAllBlogPosts(): Promise<BlogPost[]> {
-    if (!firestore) return [];
-    const q = query(collection(firestore, 'blogPosts'), orderBy('date', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BlogPost));
+    return getAllPosts();
 }

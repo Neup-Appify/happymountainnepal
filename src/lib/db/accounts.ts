@@ -1,40 +1,65 @@
 
 'use server';
 
-import { getFirestore, collection, query, where, orderBy, getDocs, Timestamp, doc, getDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { Account, Activity, DisplayUser } from '@/lib/types';
 import { logError } from './errors';
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
-async function getDocById<T>(collectionName: string, id: string): Promise<T | null> {
-    if (!firestore) {
-        console.error("Firestore is not initialized.");
-        return null;
-    }
+export async function getAccountById(id: string): Promise<Account | null> {
     try {
-        const docRef = doc(firestore, collectionName, id);
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) {
-            return null;
-        }
-        return { id: docSnap.id, ...docSnap.data() } as T;
+        return (db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as Account | undefined) || null;
     } catch (error: any) {
-        console.error(`Error fetching doc from ${collectionName} with id ${id}:`, error);
-        await logError({ message: `Failed to fetch doc ${id} from ${collectionName}: ${error.message}`, stack: error.stack, pathname: `/${collectionName}/${id}` });
-        throw new Error(`Could not fetch from ${collectionName}.`);
+        console.error(`Error fetching account ${id}:`, error);
+        await logError({ message: `Failed to fetch account ${id}: ${error.message}`, stack: error.stack, pathname: `/accounts/${id}` });
+        throw new Error("Could not fetch account.");
     }
 }
 
+export async function saveAccount(data: Omit<Account, 'createdAt'> & { createdAt?: string }) {
+    db.prepare(`
+        INSERT INTO accounts (id, fullName, email, phone, ipAddress, passwordHash, createdAt)
+        VALUES (@id, @fullName, @email, @phone, @ipAddress, @passwordHash, @createdAt)
+        ON CONFLICT(id) DO UPDATE SET
+            fullName = excluded.fullName,
+            email = excluded.email,
+            phone = excluded.phone,
+            ipAddress = excluded.ipAddress,
+            passwordHash = COALESCE(excluded.passwordHash, accounts.passwordHash)
+    `).run({
+        ...data,
+        phone: data.phone || null,
+        ipAddress: data.ipAddress || null,
+        passwordHash: (data as any).passwordHash || null,
+        createdAt: data.createdAt || new Date().toISOString(),
+    });
+}
+
+export async function getAccountByEmail(email: string): Promise<(Account & { passwordHash?: string }) | null> {
+    return (db.prepare('SELECT * FROM accounts WHERE lower(email) = lower(?)').get(email) as (Account & { passwordHash?: string }) | undefined) || null;
+}
+
+export async function addActivity(data: Omit<Activity, 'id' | 'activityTime'> & { activityTime?: string }) {
+    const id = randomUUID();
+    db.prepare(`
+        INSERT INTO activities (id, accountId, activityName, activityInfo, fromIp, fromLocation, activityTime)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        id,
+        data.accountId,
+        data.activityName,
+        JSON.stringify(data.activityInfo || {}),
+        data.fromIp || null,
+        data.fromLocation || null,
+        data.activityTime || new Date().toISOString()
+    );
+    return id;
+}
+
 export async function getActivitiesByAccountId(accountId: string): Promise<Activity[]> {
-    if (!firestore) {
-        console.error("Firestore is not initialized.");
-        return [];
-    }
     try {
-        const activitiesRef = collection(firestore, 'activities');
-        const q = query(activitiesRef, where('accountId', '==', accountId), orderBy('activityTime', 'desc'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
+        const rows = db.prepare('SELECT * FROM activities WHERE accountId = ? ORDER BY activityTime DESC').all(accountId) as any[];
+        return rows.map(row => ({ ...row, activityInfo: row.activityInfo ? JSON.parse(row.activityInfo) : {} })) as Activity[];
     } catch (error: any) {
         console.error(`Error fetching activities for account ${accountId}:`, error);
         await logError({ message: `Failed to fetch activities for account ${accountId}: ${error.message}`, stack: error.stack, pathname: `/manage/accounts/${accountId}` });
@@ -53,34 +78,26 @@ export async function getPaginatedUsers(options: { page: number, limit: number }
         hasPreviousPage: boolean;
     }
 }> {
-    if (!firestore) throw new Error("Database not available.");
-
     const { page, limit } = options;
 
-    // 1. Fetch all registered accounts
-    const accountsSnapshot = await getDocs(collection(firestore, 'accounts'));
     const registeredUsers = new Map<string, Account>();
-    accountsSnapshot.forEach(doc => {
-        registeredUsers.set(doc.id, { id: doc.id, ...doc.data() } as Account);
+    const accounts = db.prepare('SELECT * FROM accounts').all() as Account[];
+    accounts.forEach(account => {
+        registeredUsers.set(account.id, account);
     });
 
-    // 2. Fetch all logs to get anonymous users and activity data
-    const logsSnapshot = await getDocs(query(collection(firestore, 'logs'), orderBy('timestamp', 'desc')));
+    const logs = db.prepare('SELECT * FROM logs ORDER BY timestamp DESC').all() as any[];
+    const userActivityMap = new Map<string, { activityCount: number; lastSeen: string; identifier: string; type: 'Permanent' | 'Temporary' }>();
 
-    // 3. Process logs to get unique users, activity counts, and last seen dates
-    const userActivityMap = new Map<string, { activityCount: number; lastSeen: Timestamp; identifier: string; type: 'Permanent' | 'Temporary' }>();
-
-    logsSnapshot.forEach(doc => {
-        const log = doc.data() as any;
+    logs.forEach(log => {
         const id = log.accountId || log.cookieId;
-
         if (!id) return;
 
         if (!userActivityMap.has(id)) {
             const account = registeredUsers.get(id);
             userActivityMap.set(id, {
                 activityCount: 0,
-                lastSeen: log.timestamp as Timestamp,
+                lastSeen: log.timestamp,
                 identifier: account ? account.email : log.cookieId,
                 type: account ? 'Permanent' : 'Temporary',
             });
@@ -95,7 +112,6 @@ export async function getPaginatedUsers(options: { page: number, limit: number }
     const allUsers = Array.from(userActivityMap.entries()).map(([id, data]) => ({
         id,
         ...data,
-        lastSeen: data.lastSeen.toDate().toISOString(),
     }));
 
     // Sort by last seen date

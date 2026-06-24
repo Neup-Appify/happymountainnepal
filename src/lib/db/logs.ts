@@ -1,31 +1,90 @@
 
 'use server';
 
-import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, Timestamp, where, deleteDoc, doc, startAfter, limit as firestoreLimit } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase-server';
 import type { Log } from '@/lib/types';
-import { logError } from './errors';
+import { db } from './sqlite';
+import { randomUUID } from 'crypto';
 
 export async function createLog(data: Omit<Log, 'id' | 'timestamp'>): Promise<void> {
-    if (!firestore) {
-        console.error("Firestore is not initialized. Cannot create log.");
-        return;
-    }
     try {
-        const cleanedData = Object.entries(data).reduce((acc, [key, value]) => {
-            if (value !== undefined) {
-                (acc as any)[key] = value;
-            }
-            return acc;
-        }, {} as Record<string, any>);
-
-        await addDoc(collection(firestore, 'logs'), {
-            ...cleanedData,
-            timestamp: serverTimestamp(),
-        });
+        db.prepare(`
+            INSERT INTO logs (
+                id, accountId, cookieId, pageAccessed, resourceType, method, statusCode,
+                referrer, userAgent, ipAddress, timestamp, isBot, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            randomUUID(),
+            (data as any).accountId || null,
+            data.cookieId,
+            data.pageAccessed,
+            data.resourceType,
+            data.method || null,
+            data.statusCode || null,
+            data.referrer || null,
+            data.userAgent,
+            data.ipAddress || null,
+            new Date().toISOString(),
+            data.isBot ? 1 : 0,
+            JSON.stringify(data.metadata || null)
+        );
     } catch (error) {
-        console.error('Failed to create log in Firestore:', error);
+        console.error('Failed to create log in SQLite:', error);
     }
+}
+
+function ensureLogsTable() {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS logs (
+            id TEXT PRIMARY KEY,
+            accountId TEXT,
+            cookieId TEXT,
+            pageAccessed TEXT NOT NULL,
+            resourceType TEXT NOT NULL,
+            method TEXT,
+            statusCode INTEGER,
+            referrer TEXT,
+            userAgent TEXT NOT NULL,
+            ipAddress TEXT,
+            timestamp TEXT NOT NULL,
+            isBot INTEGER DEFAULT 0,
+            metadata TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_logs_cookieId ON logs(cookieId);
+    `);
+}
+
+function mapLog(row: any): Log {
+    return {
+        ...row,
+        isBot: Boolean(row.isBot),
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    } as Log;
+}
+
+function buildWhere(options?: {
+    cookieId?: string;
+    resourceType?: 'page' | 'api' | 'static' | 'redirect';
+    isBot?: boolean;
+}) {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    if (options?.cookieId) {
+        conditions.push('cookieId = ?');
+        params.push(options.cookieId);
+    }
+    if (options?.resourceType) {
+        conditions.push('resourceType = ?');
+        params.push(options.resourceType);
+    }
+    if (options?.isBot !== undefined) {
+        conditions.push('isBot = ?');
+        params.push(options.isBot ? 1 : 0);
+    }
+    return {
+        clause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+        params,
+    };
 }
 
 export async function getLogs(options?: {
@@ -35,48 +94,19 @@ export async function getLogs(options?: {
     resourceType?: 'page' | 'api' | 'static' | 'redirect';
     isBot?: boolean;
 }): Promise<{ logs: Log[]; hasMore: boolean; totalPages: number }> {
-    if (!firestore) return { logs: [], hasMore: false, totalPages: 0 };
-    
+    ensureLogsTable();
     const limit = options?.limit || 10;
     const page = options?.page || 1;
-
-    let baseQuery = query(collection(firestore, 'logs'));
-
-    if (options?.cookieId) baseQuery = query(baseQuery, where('cookieId', '==', options.cookieId));
-    if (options?.resourceType) baseQuery = query(baseQuery, where('resourceType', '==', options.resourceType));
-    if (options?.isBot !== undefined) baseQuery = query(baseQuery, where('isBot', '==', options.isBot));
-
-    const countSnapshot = await getDocs(baseQuery);
-    const totalCount = countSnapshot.size;
+    const offset = (page - 1) * limit;
+    const where = buildWhere(options);
+    const totalCount = (db.prepare(`SELECT COUNT(*) as count FROM logs ${where.clause}`).get(...where.params) as { count: number }).count;
     const totalPages = Math.ceil(totalCount / limit);
-    
-    let paginatedQuery = query(baseQuery, orderBy('timestamp', 'desc'), firestoreLimit(limit));
-    
-    if (page > 1) {
-        const offset = (page - 1) * limit;
-        const cursorQuery = query(baseQuery, orderBy('timestamp', 'desc'), firestoreLimit(offset));
-        const cursorSnapshot = await getDocs(cursorQuery);
-        const lastVisible = cursorSnapshot.docs[cursorSnapshot.docs.length - 1];
-        if (lastVisible) {
-            paginatedQuery = query(paginatedQuery, startAfter(lastVisible));
-        }
-    }
-    
-    const logsSnapshot = await getDocs(paginatedQuery);
-
-    const logs = logsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        const timestamp = data.timestamp || Timestamp.now();
-        return {
-            id: doc.id,
-            ...data,
-            timestamp: timestamp.toDate().toISOString()
-        } as Log;
-    });
-
-    const hasMore = page < totalPages;
-
-    return { logs, hasMore, totalPages };
+    const rows = db.prepare(`
+        SELECT * FROM logs ${where.clause}
+        ORDER BY timestamp DESC
+        LIMIT ? OFFSET ?
+    `).all(...where.params, limit, offset) as any[];
+    return { logs: rows.map(mapLog), hasMore: page < totalPages, totalPages };
 }
 
 export async function getLogCount(options?: {
@@ -84,31 +114,21 @@ export async function getLogCount(options?: {
     resourceType?: 'page' | 'api' | 'static' | 'redirect';
     isBot?: boolean;
 }): Promise<number> {
-    if (!firestore) return 0;
-    let q = query(collection(firestore, 'logs'));
-    if (options?.cookieId) q = query(q, where('cookieId', '==', options.cookieId));
-    if (options?.resourceType) q = query(q, where('resourceType', '==', options.resourceType));
-    if (options?.isBot !== undefined) q = query(q, where('isBot', '==', options.isBot));
-    const snapshot = await getDocs(q);
-    return snapshot.size;
+    ensureLogsTable();
+    const where = buildWhere(options);
+    return (db.prepare(`SELECT COUNT(*) as count FROM logs ${where.clause}`).get(...where.params) as { count: number }).count;
 }
 
 export async function deleteLog(id: string): Promise<void> {
-    if (!firestore) throw new Error("Database not available.");
-    await deleteDoc(doc(firestore, 'logs', id));
+    ensureLogsTable();
+    db.prepare('DELETE FROM logs WHERE id = ?').run(id);
 }
 
 export async function clearOldLogs(daysToKeep: number = 30): Promise<number> {
-    if (!firestore) throw new Error("Database not available.");
+    ensureLogsTable();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-    const cutoffTimestamp = Timestamp.fromDate(cutoffDate);
-
-    const q = query(collection(firestore, 'logs'), where('timestamp', '<', cutoffTimestamp));
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
-    return snapshot.size;
+    return db.prepare('DELETE FROM logs WHERE timestamp < ?').run(cutoffDate.toISOString()).changes;
 }
 
 export async function getUniquePageLogs(options?: {
@@ -117,22 +137,16 @@ export async function getUniquePageLogs(options?: {
     resourceType?: 'page' | 'api' | 'static' | 'redirect';
     isBot?: boolean;
 }): Promise<{ logs: Log[]; hasMore: boolean; totalPages: number }> {
-    if (!firestore) return { logs: [], hasMore: false, totalPages: 0 };
-    let q = query(collection(firestore, 'logs'), orderBy('timestamp', 'desc'));
-    if (options?.resourceType) q = query(q, where('resourceType', '==', options.resourceType));
-    if (options?.isBot !== undefined) q = query(q, where('isBot', '==', options.isBot));
-
-    const snapshot = await getDocs(q);
+    ensureLogsTable();
+    const where = buildWhere(options);
+    const rows = db.prepare(`
+        SELECT * FROM logs ${where.clause}
+        ORDER BY timestamp DESC
+    `).all(...where.params) as any[];
     const uniquePagesMap = new Map<string, Log>();
 
-    snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const timestamp = data.timestamp || Timestamp.now();
-        const log: Log = {
-            id: doc.id,
-            ...data,
-            timestamp: timestamp.toDate().toISOString()
-        } as Log;
+    rows.forEach(row => {
+        const log = mapLog(row);
         const pageKey = log.pageAccessed;
         if (!uniquePagesMap.has(pageKey)) {
             uniquePagesMap.set(pageKey, log);

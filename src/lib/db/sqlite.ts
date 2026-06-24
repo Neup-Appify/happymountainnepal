@@ -140,15 +140,90 @@ export function initDb() {
 
     CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
+      type TEXT,
       rating INTEGER NOT NULL,
       author TEXT NOT NULL,
+      userRole TEXT,
       comment TEXT NOT NULL,
       date TEXT NOT NULL, -- ISO string
       status TEXT DEFAULT 'pending', -- 'pending' | 'approved' | 'rejected'
       source TEXT DEFAULT 'website', -- 'website' | 'tripadvisor' | 'google'
       packageId TEXT, -- Optional, link to a specific package
+      userId TEXT,
+      originalReviewUrl TEXT,
+      reviewMedia TEXT,
       createdAt TEXT,
       FOREIGN KEY (packageId) REFERENCES packages(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      fullName TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      ipAddress TEXT,
+      passwordHash TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      accountId TEXT NOT NULL,
+      activityName TEXT NOT NULL,
+      activityInfo TEXT,
+      fromIp TEXT,
+      fromLocation TEXT,
+      activityTime TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS errors (
+      id TEXT PRIMARY KEY,
+      message TEXT NOT NULL,
+      stack TEXT,
+      componentStack TEXT,
+      pathname TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      context TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS feedbacks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      deadline TEXT,
+      status TEXT DEFAULT 'open',
+      priority TEXT DEFAULT 'medium',
+      issuedTo TEXT,
+      entries TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS gears (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      image TEXT,
+      provided INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS redirects (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      permanent INTEGER DEFAULT 1,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS paymentSettings (
+      id TEXT PRIMARY KEY,
+      bankName TEXT NOT NULL,
+      accountName TEXT NOT NULL,
+      accountNumber TEXT NOT NULL,
+      swiftCode TEXT,
+      iban TEXT,
+      bankAddress TEXT,
+      additionalInstructions TEXT,
+      updatedAt TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS legal (
@@ -208,6 +283,25 @@ export function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_inquiries_createdAt ON inquiries(createdAt DESC);
+
+    CREATE TABLE IF NOT EXISTS logs (
+      id TEXT PRIMARY KEY,
+      accountId TEXT,
+      cookieId TEXT,
+      pageAccessed TEXT NOT NULL,
+      resourceType TEXT NOT NULL,
+      method TEXT,
+      statusCode INTEGER,
+      referrer TEXT,
+      userAgent TEXT NOT NULL,
+      ipAddress TEXT,
+      timestamp TEXT NOT NULL,
+      isBot INTEGER DEFAULT 0,
+      metadata TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_logs_cookieId ON logs(cookieId);
   `);
 
   // Migration for adding parentId to existing table if needed
@@ -275,6 +369,46 @@ export function initDb() {
     }
   } catch (error) {
     console.error("Migration error (legalDocuments columns):", error);
+  }
+
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(reviews)").all() as any[];
+    const columns = new Set(tableInfo.map(col => col.name));
+    const reviewColumns: Array<[string, string]> = [
+      ['type', 'TEXT'],
+      ['userRole', 'TEXT'],
+      ['userId', 'TEXT'],
+      ['originalReviewUrl', 'TEXT'],
+      ['reviewMedia', 'TEXT'],
+    ];
+
+    for (const [name, definition] of reviewColumns) {
+      if (!columns.has(name)) {
+        db.prepare(`ALTER TABLE reviews ADD COLUMN ${name} ${definition}`).run();
+      }
+    }
+  } catch (error) {
+    console.error("Migration error (review columns):", error);
+  }
+
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(logs)").all() as any[];
+    const hasAccountId = tableInfo.some(col => col.name === 'accountId');
+    if (!hasAccountId) {
+      db.prepare("ALTER TABLE logs ADD COLUMN accountId TEXT").run();
+    }
+  } catch (error) {
+    console.error("Migration error (logs columns):", error);
+  }
+
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(accounts)").all() as any[];
+    const hasPasswordHash = tableInfo.some(col => col.name === 'passwordHash');
+    if (!hasPasswordHash) {
+      db.prepare("ALTER TABLE accounts ADD COLUMN passwordHash TEXT").run();
+    }
+  } catch (error) {
+    console.error("Migration error (accounts columns):", error);
   }
 
   db.prepare(`
@@ -562,6 +696,15 @@ export function savePost(post: Omit<PostDB, 'tags' | 'searchKeywords'> & { tags:
 
 export function deletePost(id: string) {
   db.prepare('DELETE FROM posts WHERE id = ?').run(id);
+}
+
+export function checkPostSlugAvailability(slug: string, excludeId?: string): boolean {
+  if (excludeId) {
+    const row = db.prepare('SELECT id FROM posts WHERE slug = ? AND id != ?').get(slug, excludeId);
+    return !row;
+  }
+  const row = db.prepare('SELECT id FROM posts WHERE slug = ?').get(slug);
+  return !row;
 }
 
 // --- Upload Helpers ---
