@@ -474,6 +474,28 @@ export function getPostBySlug(slug: string): BlogPost | null {
   } as BlogPost;
 }
 
+export function getAllPosts(status?: string): BlogPost[] {
+  let query = 'SELECT * FROM posts';
+  const params: any[] = [];
+
+  if (status) {
+    query += ' WHERE status = ?';
+    params.push(status);
+  }
+
+  query += ' ORDER BY createdAt DESC';
+
+  const rows = db.prepare(query).all(...params) as PostDB[];
+
+  return rows.map(row => ({
+    ...row,
+    date: row.createdAt,
+    tags: JSON.parse(row.tags || '[]'),
+    searchKeywords: JSON.parse(row.searchKeywords || '[]'),
+    status: row.status as 'draft' | 'published'
+  }) as BlogPost);
+}
+
 export function savePost(post: Omit<PostDB, 'tags' | 'searchKeywords'> & { tags: string[], searchKeywords: string[] }) {
   const existing = db.prepare('SELECT id FROM posts WHERE id = ?').get(post.id);
 
@@ -907,6 +929,21 @@ export function getPopularToursDB(limit: number = 3) {
 export function getAllPackagesForSelect() {
   const rows = db.prepare('SELECT id, name, slug FROM packages ORDER BY name ASC').all() as { id: string; name: string; slug: string }[];
   return rows;
+}
+
+export function getAllPackages(status?: string): Tour[] {
+  let query = 'SELECT * FROM packages';
+  const params: any[] = [];
+
+  if (status) {
+    query += ' WHERE status = ?';
+    params.push(status);
+  }
+
+  query += ' ORDER BY name ASC';
+
+  const rows = db.prepare(query).all(...params) as PackageDB[];
+  return rows.map(deserializePackage);
 }
 
 export function deletePackage(id: string) {
