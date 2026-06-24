@@ -15,11 +15,13 @@ import Image from 'next/image';
 import { TourNav } from '@/components/tour-details/TourNav';
 import { Button } from '@/components/ui/button';
 import { FileDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { exportTourToPdf } from '@/lib/pdf-export';
 import type { Tour, ManagedReview } from '@/lib/types';
 import { useEffect, useMemo } from 'react';
 import { Chatbot } from '@/components/Chatbot';
 import { getTourChatMessage } from '@/lib/chat-messages';
+import Link from 'next/link';
 
 interface TourDetailClientProps {
   tour: Tour;
@@ -163,6 +165,17 @@ export default function TourDetailClient({ tour, tempUserId }: TourDetailClientP
                   className="mt-4 text-lg text-muted-foreground [&_p]:mb-4 last:[&_p]:mb-0"
                   dangerouslySetInnerHTML={{ __html: tour.description }}
                 />
+                <div className="mt-8 grid gap-4 md:grid-cols-3">
+                  {[
+                    "Local Nepali-owned support team",
+                    "Licensed guides and route planning",
+                    "24/7 help for logistics and emergency coordination",
+                  ].map((item) => (
+                    <div key={item} className="rounded-xl bg-secondary/70 p-4 text-sm text-muted-foreground">
+                      {item}
+                    </div>
+                  ))}
+                </div>
               </header>
 
               <div className="lg:hidden my-8">
@@ -172,6 +185,32 @@ export default function TourDetailClient({ tour, tempUserId }: TourDetailClientP
               <section id="key-facts" className="scroll-m-32">
                 <KeyFacts tour={tour} />
               </section>
+
+              {tour.departureDates && tour.departureDates.length > 0 && (
+                <section id="departures" className="scroll-m-32">
+                  <h2 className="text-3xl font-bold !font-headline mb-6">Departure Calendar</h2>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {tour.departureDates.map((departure, index) => (
+                      <div key={`${tour.id}-departure-${index}`} className="rounded-xl border bg-card p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold">{String(departure.date)}</p>
+                          <Badge variant={departure.guaranteed ? "default" : "outline"}>
+                            {departure.guaranteed ? "Guaranteed" : "Open"}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Price from ${departure.price}. Ask the team about remaining seats and current trail conditions for this departure.
+                        </p>
+                        <Button asChild size="sm" variant="outline" className="mt-4">
+                          <Link href={`/contact?subject=${encodeURIComponent(`Departure question for ${tour.name}`)}&message=${encodeURIComponent(`I am interested in the ${tour.name} departure on ${String(departure.date)}. Please share current availability, conditions, and whether this date is a good fit for me.`)}`}>
+                            Ask about this date
+                          </Link>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               <section id="itinerary" className="scroll-m-32">
                 <Itinerary items={tour.itinerary} />
               </section>

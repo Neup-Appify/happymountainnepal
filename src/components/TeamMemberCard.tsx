@@ -24,6 +24,11 @@ export function TeamMemberCard({ member }: TeamMemberCardProps) {
         <div className="mt-4">
             <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{member.name}</h3>
             <p className="text-sm text-muted-foreground">{member.role}</p>
+            {member.shortDescription ? (
+              <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
+                {member.shortDescription}
+              </p>
+            ) : null}
         </div>
     </Link>
   );

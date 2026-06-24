@@ -47,8 +47,20 @@ export default function TeamsPage() {
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold !font-headline">Our Team</h1>
           <p className="mt-4 max-w-3xl mx-auto text-lg text-muted-foreground">
-            Meet the passionate individuals who make your Himalayan adventures possible.
+            Meet the guides, planners, and local experts who make your Himalayan adventures possible.
           </p>
+        </div>
+
+        <div className="grid gap-4 mb-16 md:grid-cols-3">
+          {[
+            "Guide profiles build trust before the first inquiry.",
+            "Local experience matters more than generic travel copy.",
+            "Use this page to show certifications, languages, and route strengths over time.",
+          ].map((item) => (
+            <div key={item} className="rounded-xl bg-secondary/70 p-5 text-sm text-muted-foreground">
+              {item}
+            </div>
+          ))}
         </div>
 
         {isLoading ? (

@@ -5,9 +5,9 @@ import { saveContactInquiry } from '@/lib/db';
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { name, email, subject, message, page } = body;
+        const { name, email, phone, subject, message, page } = body;
 
-        if (!name || !email || !subject || !message || !page) {
+        if (!name || (!email && !phone) || !subject || !message || !page) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
         const inquiryPayload = {
             page,
             temporary_id: temporaryId,
-            data: { name, email, subject, message }
+            data: { name, email, phone, subject, message }
         };
 
         await saveContactInquiry(inquiryPayload);

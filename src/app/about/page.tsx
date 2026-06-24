@@ -65,8 +65,23 @@ export default function AboutPage() {
           </p>
         </div>
 
+        <div className="grid gap-6 mb-16 lg:grid-cols-3">
+          {[
+            "A local Nepali team that knows these routes from real experience",
+            "Friendly planning support before you book and while you are on the trek",
+            "Guides and staff you can get to know before your trip begins",
+          ].map((item) => (
+            <div key={item} className="rounded-xl bg-secondary/70 p-6 text-muted-foreground">
+              {item}
+            </div>
+          ))}
+        </div>
+
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold !font-headline">Our Experts</h2>
+          <h2 className="text-3xl md:text-4xl font-bold !font-headline">Meet Our Guides and Trek Team</h2>
+          <p className="mt-3 max-w-2xl mx-auto text-muted-foreground">
+            Get to know the people who help plan your trip, guide you on the trail, and support your journey in Nepal.
+          </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-12 lg:gap-x-12 lg:gap-y-16">
           {teamMembers?.map((member) => (

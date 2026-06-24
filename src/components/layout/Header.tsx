@@ -29,6 +29,51 @@ interface NavLink {
 const staticNavLinks: NavLink[] = [
     { href: "/tours", title: "Tours" },
   {
+    title: "Resources",
+    items: [
+      {
+        title: "Trail Reports",
+        href: "/reports",
+        description: "Current trail conditions, weather notes, and logistics updates.",
+      },
+      {
+        title: "Trek Comparisons",
+        href: "/comparisons",
+        description: "Decision-stage pages comparing Nepal's most searched treks.",
+      },
+      {
+        title: "Client Stories",
+        href: "/stories",
+        description: "Detailed traveler stories that show how the team handled real trips.",
+      },
+      {
+        title: "Departure Calendar",
+        href: "/departures",
+        description: "Upcoming trek departures and current planning windows.",
+      },
+      {
+        title: "Trek Hubs",
+        href: "/trek-hubs",
+        description: "Clustered planning hubs for Everest, Annapurna, Manaslu, and Langtang.",
+      },
+    ],
+  },
+  {
+    title: "Tools",
+    items: [
+      {
+        title: "Cost Calculator",
+        href: "/tools/cost-calculator",
+        description: "Estimate trek budgets and start the pricing conversation earlier.",
+      },
+      {
+        title: "Trek Planner",
+        href: "/tools/trek-planner",
+        description: "Match month, budget, fitness, and trip length to the right trek.",
+      },
+    ],
+  },
+  {
     title: "About",
     items: [
       {

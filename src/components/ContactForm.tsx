@@ -17,9 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "./ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -36,6 +36,7 @@ export function ContactForm() {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -47,6 +48,18 @@ export function ContactForm() {
       message: "",
     },
   });
+
+  useEffect(() => {
+    const subject = searchParams.get("subject") || "";
+    const message = searchParams.get("message") || "";
+
+    if (subject) {
+      form.setValue("subject", subject, { shouldDirty: false });
+    }
+    if (message) {
+      form.setValue("message", message, { shouldDirty: false });
+    }
+  }, [form, searchParams]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     startTransition(async () => {

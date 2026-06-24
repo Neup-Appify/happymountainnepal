@@ -10,8 +10,17 @@ import { RecommendedTours } from "@/components/RecommendedTours";
 import { OurPartners } from "@/components/OurPartners";
 import { ContactSection } from "@/components/ContactSection";
 import { Chatbot } from "@/components/Chatbot";
+import {
+  ClientStoriesSection,
+  DepartureCalendarPreview,
+  PlanningToolsSection,
+  TrailReportsSection,
+  TrekComparisonSection,
+  TrustConversionSection,
+} from "@/components/growth/GrowthSections";
 import { headers } from "next/headers";
 import { getLocations, getPosts, getFeaturedToursDB, getPopularToursDB, getReviewsDB } from "@/lib/db/sqlite";
+import { getTeamMembers } from "@/lib/db/team";
 
 import { getSiteProfileAction } from '@/app/actions/profile';
 import { getPartnersAction } from '@/app/actions/partners';
@@ -26,9 +35,10 @@ export default async function Home() {
   const featuredTours = getFeaturedToursDB(3); 
   
   // Parallel fetch for remaining data
-  const [profile, partners] = await Promise.all([
+  const [profile, partners, teamMembers] = await Promise.all([
     getSiteProfileAction(),
-    getPartnersAction()
+    getPartnersAction(),
+    getTeamMembers(),
   ]);
 
   const popularPackages = getPopularToursDB(3); 
@@ -41,12 +51,22 @@ export default async function Home() {
     <>
       <div className="homepage-sections-wrapper flex flex-col">
         <HeroSection initialProfile={profile} />
+        <TrustConversionSection
+          profile={profile}
+          reviews={reviews}
+          teamMembers={teamMembers}
+        />
+        <TrailReportsSection />
+        <TrekComparisonSection />
         <FavoriteDestinations initialLocations={featuredLocations} />
         <RecommendedTours initialTours={recommendedTours} />
         <FeaturedTours initialTours={featuredTours} />
         <PopularPackages initialTours={popularPackages} />
+        <DepartureCalendarPreview tours={[...featuredTours, ...popularPackages, ...recommendedTours]} />
         <WhyUs initialProfile={profile} />
         <Testimonials initialReviews={reviews} initialProfile={profile} />
+        <ClientStoriesSection />
+        <PlanningToolsSection />
         <RecentBlogs initialPosts={recentPostsData.posts} />
         <OurPartners initialPartners={partners} />
         <CustomizeTrip />
