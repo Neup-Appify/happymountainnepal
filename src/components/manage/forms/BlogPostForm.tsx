@@ -18,11 +18,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { type BlogPost } from '@/lib/types';
 import { slugify } from '@/lib/utils';
-import { useTransition } from 'react';
-import { Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
+import { CheckCircle, Loader2, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MediaPicker } from '../MediaPicker';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   Select,
   SelectContent,
@@ -32,14 +32,17 @@ import {
 } from "@/components/ui/select";
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import { DeleteBlogPostDialog } from '../DeleteBlogPostDialog';
+import { useDebounce } from '@/hooks/use-debounce';
 
 // ... schema definition remains same ...
 
+const slugSchema = z.string().min(5, "Slug must be at least 5 characters.")
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must contain only lowercase letters, numbers, and hyphens.")
+  .or(z.literal(''));
+
 const formSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters."),
-  slug: z.string().min(5, "Slug must be at least 5 characters.")
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must contain only lowercase letters, numbers, and hyphens.")
-    .or(z.literal('')), // Allow empty slug for drafts
+  slug: slugSchema, // Allow empty slug for drafts
   content: z.string().optional(),
   excerpt: z.string().optional(),
   author: z.string().optional(),
@@ -72,6 +75,7 @@ export function BlogPostForm({ post }: BlogPostFormProps) {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
+    mode: 'onChange',
     defaultValues: {
       title: post.title || '',
       slug: post.slug || '',
@@ -85,6 +89,72 @@ export function BlogPostForm({ post }: BlogPostFormProps) {
       status: post.status as 'draft' | 'published' || 'draft', // Type cast for safety
     },
   });
+
+  const currentSlug = form.watch('slug');
+  const debouncedSlug = useDebounce(currentSlug, 500);
+  const [isSlugChecking, setIsSlugChecking] = useState(false);
+  const [isSlugAvailable, setIsSlugAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const trimmedSlug = debouncedSlug.trim();
+
+    if (!trimmedSlug) {
+      setIsSlugAvailable(null);
+      setIsSlugChecking(false);
+      form.clearErrors('slug');
+      return;
+    }
+
+    const schemaResult = slugSchema.safeParse(trimmedSlug);
+    if (!schemaResult.success) {
+      setIsSlugAvailable(null);
+      setIsSlugChecking(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const checkSlugAvailability = async () => {
+      setIsSlugChecking(true);
+      try {
+        const params = new URLSearchParams({ slug: trimmedSlug });
+        if (post.id) {
+          params.set('excludeId', post.id);
+        }
+
+        const response = await fetch(`/api/blog?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error('Could not check slug availability.');
+        }
+
+        const data = await response.json();
+        if (isCancelled) return;
+
+        setIsSlugAvailable(Boolean(data.available));
+        if (data.available) {
+          if (form.formState.errors.slug?.type === 'manual') {
+            form.clearErrors('slug');
+          }
+        } else {
+          form.setError('slug', { type: 'manual', message: 'This slug is already taken.' });
+        }
+      } catch {
+        if (isCancelled) return;
+        setIsSlugAvailable(null);
+        form.setError('slug', { type: 'manual', message: 'Could not check slug availability.' });
+      } finally {
+        if (!isCancelled) {
+          setIsSlugChecking(false);
+        }
+      }
+    };
+
+    checkSlugAvailability();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedSlug, form, post.id]);
 
   const onSubmit = (values: FormValues) => {
     startTransition(async () => {
@@ -182,7 +252,35 @@ export function BlogPostForm({ post }: BlogPostFormProps) {
                     <FormLabel>Slug (URL)</FormLabel>
                     <FormControl>
                       <div className="flex gap-2">
-                        <Input placeholder="post-url-slug" {...field} disabled={isPending} />
+                        <div className="relative flex-1">
+                          <Input
+                            placeholder="post-url-slug"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const nextSlug = slugify(e.target.value);
+                              if (form.formState.errors.slug?.type === 'manual') {
+                                form.clearErrors('slug');
+                              }
+                              field.onChange(nextSlug);
+                              setIsSlugAvailable(null);
+                              setIsSlugChecking(Boolean(nextSlug));
+                            }}
+                            disabled={isPending}
+                            className="pr-10"
+                          />
+                          {!isPending && field.value && (
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                              {isSlugChecking ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : isSlugAvailable === true ? (
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                              ) : isSlugAvailable === false ? (
+                                <XCircle className="h-4 w-4 text-destructive" />
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
                         <Button
                           type="button"
                           variant="outline"
@@ -190,7 +288,8 @@ export function BlogPostForm({ post }: BlogPostFormProps) {
                           onClick={() => {
                             const title = form.getValues('title');
                             if (title) {
-                              form.setValue('slug', slugify(title));
+                              form.setValue('slug', slugify(title), { shouldValidate: true, shouldDirty: true });
+                              setIsSlugAvailable(null);
                             }
                           }}
                           disabled={isPending}

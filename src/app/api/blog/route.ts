@@ -1,11 +1,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPosts, savePost } from '@/lib/db/sqlite';
+import { getPostBySlug, getPosts, savePost } from '@/lib/db/sqlite';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
+        const slug = searchParams.get('slug');
+        const excludeId = searchParams.get('excludeId');
+
+        if (slug) {
+            const existingPost = getPostBySlug(slug);
+            const available = !existingPost || (excludeId ? existingPost.id === excludeId : false);
+            return NextResponse.json({ available });
+        }
+
         const limit = parseInt(searchParams.get('limit') || '10');
         const page = parseInt(searchParams.get('page') || '1');
         const rawStatus = searchParams.get('status');
