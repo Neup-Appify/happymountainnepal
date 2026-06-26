@@ -43,6 +43,23 @@ export function classifyUserAgent(userAgent?: string | null): {
   return { agentCategory: 'Person', isBot: false };
 }
 
+export function getBotIdentifier(userAgent?: string | null, fallbackIdentifier?: string | null): string {
+  const classification = classifyUserAgent(userAgent);
+
+  if (!classification.isBot) {
+    return fallbackIdentifier?.trim() || 'notdefined';
+  }
+
+  if (classification.agentCategory !== 'Other Bot') {
+    return classification.agentCategory;
+  }
+
+  const firstToken = (userAgent || '').trim().split(/\s+/)[0] || '';
+  const cleaned = firstToken.split('/')[0]?.trim();
+
+  return cleaned || fallbackIdentifier?.trim() || 'Other Bot';
+}
+
 export function classifyReferrerSource(referrer?: string | null): string {
   if (!referrer) {
     return 'Direct';

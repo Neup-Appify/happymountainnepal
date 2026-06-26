@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getManagerData } from '@/lib/base-edge';
-import { classifyUserAgent } from '@/lib/log-classification';
+import { classifyUserAgent, getBotIdentifier } from '@/lib/log-classification';
 import { readBaseJson } from '@/lib/reader';
 import redirects from '@/../base/core/redirects.json';
 // import appInfo from '@/../base/appinfo.json';
@@ -60,11 +60,14 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? request.headers.get('x-real-ip') ?? '127.0.0.1';
   const referrer = request.headers.get('referer') || undefined;
   const method = request.method;
+  const isBotRequest = classifyUserAgent(userAgent).isBot;
 
   // 1. Temp account cookie
   let accountId = request.cookies.get(COOKIE_NAME)?.value;
   let isNewAccount = false;
-  if (!accountId) {
+  if (isBotRequest) {
+    accountId = getBotIdentifier(userAgent, accountId);
+  } else if (!accountId) {
     accountId = uuidv4();
     isNewAccount = true;
   }
@@ -73,7 +76,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   requestHeaders.set('x-temp-account-id', accountId);
 
   const shouldLog = !pathname.startsWith('/_next') && pathname !== '/favicon.ico';
-  const isBotRequest = classifyUserAgent(userAgent).isBot;
 
   // Create the base response with the new headers
   const response = NextResponse.next({
@@ -83,7 +85,7 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   });
 
   // Set the cookie on the response if it's a new account
-  if (isNewAccount) {
+  if (isNewAccount && !isBotRequest) {
     response.cookies.set(COOKIE_NAME, accountId, {
       httpOnly: true, // Make it httpOnly for security
       secure: process.env.NODE_ENV === 'production',

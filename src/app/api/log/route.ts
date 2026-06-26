@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLog } from '@/lib/db';
+import { getBotIdentifier } from '@/lib/log-classification';
 
 export async function POST(request: NextRequest) {
     try {
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
             metadata
         } = body;
 
+        const finalUserAgent = userAgent || request.headers.get('user-agent');
         let finalCookieId = cookieId;
 
         // If cookieId is not provided in body, try to get it from cookies
@@ -25,12 +27,6 @@ export async function POST(request: NextRequest) {
             finalCookieId = request.cookies.get('temp_account')?.value;
         }
 
-        // Fallback if cookie is completely missing (e.g. cookies blocked)
-        if (!finalCookieId) {
-            finalCookieId = "notdefined";
-        }
-
-        const finalUserAgent = userAgent || request.headers.get('user-agent');
         const finalReferrer = referrer || request.headers.get('referer') || undefined;
         const finalIpAddress =
             ipAddress ||
@@ -41,6 +37,10 @@ export async function POST(request: NextRequest) {
 
         if (!pageAccessed || !resourceType || !finalUserAgent) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        }
+
+        if (!finalCookieId) {
+            finalCookieId = getBotIdentifier(finalUserAgent, finalCookieId);
         }
 
         const logId = await createLog({

@@ -85,8 +85,6 @@ type ReferrerSummary = {
   totalRequests: number;
   uniqueIdentifiers: number;
   last24Hours: number;
-  aiRequests: number;
-  humanRequests: number;
   otherBotRequests: number;
   lastSeen: string;
 };
@@ -129,17 +127,25 @@ function getQueryTokens(rawQuery: string) {
   return normalized ? normalized.split(/\s+/) : [];
 }
 
+function parseQueryToken(token: string) {
+  const tokenMatch = token.match(/^([a-z]+)([:=])(.*)$/i);
+  if (!tokenMatch) return null;
+
+  const [, rawKey, , rawValue] = tokenMatch;
+  return {
+    key: rawKey.toLowerCase(),
+    value: rawValue.trim(),
+  };
+}
+
 function getQueryPageSize(rawQuery: string) {
   let pageSize = DEFAULT_PAGE_SIZE;
 
   for (const token of getQueryTokens(rawQuery)) {
-    const tokenMatch = token.match(/^([a-z]+):(.*)$/i);
-    if (!tokenMatch) continue;
+    const parsedToken = parseQueryToken(token);
+    if (!parsedToken || parsedToken.key !== 'pagesize') continue;
 
-    const [, rawKey, rawValue] = tokenMatch;
-    if (rawKey.toLowerCase() !== 'pagesize') continue;
-
-    const parsed = parsePageSizeValue(rawValue.trim());
+    const parsed = parsePageSizeValue(parsedToken.value);
     if (parsed) {
       pageSize = parsed;
     }
@@ -148,8 +154,16 @@ function getQueryPageSize(rawQuery: string) {
   return pageSize;
 }
 
-function getViewMode(value: string | null): ViewMode {
-  return VIEW_MODES.includes((value || '') as ViewMode) ? (value as ViewMode) : 'users';
+function getViewMode(rawQuery: string, fallbackValue?: string | null): ViewMode {
+  for (const token of getQueryTokens(rawQuery)) {
+    const parsedToken = parseQueryToken(token);
+    if (!parsedToken || parsedToken.key !== 'viewas') continue;
+    if (VIEW_MODES.includes(parsedToken.value as ViewMode)) {
+      return parsedToken.value as ViewMode;
+    }
+  }
+
+  return VIEW_MODES.includes((fallbackValue || '') as ViewMode) ? (fallbackValue as ViewMode) : 'users';
 }
 
 function getLogIdentifier(log: Log) {
@@ -215,15 +229,13 @@ function filterAndSortUsers(users: DisplayUser[], rawQuery: string) {
     const freeText: string[] = [];
 
     for (const token of tokens) {
-      const tokenMatch = token.match(/^([a-z]+):(.*)$/i);
-      if (!tokenMatch) {
+      const parsedToken = parseQueryToken(token);
+      if (!parsedToken) {
         freeText.push(token.toLowerCase());
         continue;
       }
 
-      const [, rawKey, rawValue] = tokenMatch;
-      const key = rawKey.toLowerCase();
-      const value = rawValue.trim();
+      const { key, value } = parsedToken;
 
       if (!value) continue;
 
@@ -240,6 +252,10 @@ function filterAndSortUsers(users: DisplayUser[], rawQuery: string) {
         if (parsed) {
           pageSize = parsed;
         }
+        continue;
+      }
+
+      if (key === 'viewas') {
         continue;
       }
 
@@ -421,8 +437,6 @@ function buildReferrerSummaries(logs: Log[]) {
     totalRequests: number;
     identifiers: Set<string>;
     last24Hours: number;
-    aiRequests: number;
-    humanRequests: number;
     otherBotRequests: number;
     lastSeen: string;
   }>();
@@ -436,8 +450,6 @@ function buildReferrerSummaries(logs: Log[]) {
       totalRequests: 0,
       identifiers: new Set<string>(),
       last24Hours: 0,
-      aiRequests: 0,
-      humanRequests: 0,
       otherBotRequests: 0,
       lastSeen: timestamp,
     };
@@ -445,9 +457,7 @@ function buildReferrerSummaries(logs: Log[]) {
     entry.totalRequests += 1;
     entry.identifiers.add(getLogIdentifier(log));
     if (timestampValue >= cutoff) entry.last24Hours += 1;
-    if (isAiCategory(category)) entry.aiRequests += 1;
-    else if (isHumanCategory(category)) entry.humanRequests += 1;
-    else entry.otherBotRequests += 1;
+    if (!isHumanCategory(category)) entry.otherBotRequests += 1;
     if (new Date(timestamp).getTime() > new Date(entry.lastSeen).getTime()) {
       entry.lastSeen = timestamp;
     }
@@ -462,8 +472,6 @@ function buildReferrerSummaries(logs: Log[]) {
       totalRequests: entry.totalRequests,
       uniqueIdentifiers: entry.identifiers.size,
       last24Hours: entry.last24Hours,
-      aiRequests: entry.aiRequests,
-      humanRequests: entry.humanRequests,
       otherBotRequests: entry.otherBotRequests,
       lastSeen: entry.lastSeen,
     }))
@@ -472,7 +480,11 @@ function buildReferrerSummaries(logs: Log[]) {
 
 function filterGroupedItems<T>(items: T[], rawQuery: string, toSearchValues: (item: T) => Array<string | number | undefined>) {
   const tokens = getQueryTokens(rawQuery)
-    .filter((token) => !/^pagesize:/i.test(token) && !/^sortby:/i.test(token) && !/^soryby:/i.test(token));
+    .filter((token) => {
+      const parsedToken = parseQueryToken(token);
+      if (!parsedToken) return true;
+      return !['pagesize', 'sortby', 'soryby', 'viewas'].includes(parsedToken.key);
+    });
 
   return items.filter((item) => matchesFreeText(toSearchValues(item), tokens.map((token) => token.toLowerCase())));
 }
@@ -489,7 +501,7 @@ function InteractionsContent() {
 
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const searchQuery = searchParams.get('q') || '';
-  const viewMode = getViewMode(searchParams.get('viewAs'));
+  const viewMode = getViewMode(searchQuery, searchParams.get('viewAs'));
   const [draftQuery, setDraftQuery] = useState(searchQuery);
 
   const fetchInteractions = useCallback(async () => {
@@ -547,8 +559,6 @@ function InteractionsContent() {
       item.totalRequests,
       item.uniqueIdentifiers,
       item.last24Hours,
-      item.aiRequests,
-      item.humanRequests,
       item.otherBotRequests,
     ]),
     [allLogs, searchQuery],
@@ -567,28 +577,23 @@ function InteractionsContent() {
   const offset = (safeCurrentPage - 1) * (viewMode === 'users' ? usersResult.pageSize : pageSize);
   const paginatedItems = activeItems.slice(offset, offset + (viewMode === 'users' ? usersResult.pageSize : pageSize));
 
-  const buildInteractionsUrl = (page: number, query: string, nextViewMode: ViewMode) => {
+  const buildInteractionsUrl = (page: number, query: string) => {
     const params = new URLSearchParams();
     if (page > 1) params.set('page', String(page));
     if (query.trim()) params.set('q', query.trim());
-    if (nextViewMode !== 'users') params.set('viewAs', nextViewMode);
     const nextQuery = params.toString();
     return nextQuery ? `/manage/interactions?${nextQuery}` : '/manage/interactions';
   };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
-      router.push(buildInteractionsUrl(newPage, searchQuery, viewMode));
+      router.push(buildInteractionsUrl(newPage, searchQuery));
     }
   };
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    router.push(buildInteractionsUrl(1, draftQuery, viewMode));
-  };
-
-  const handleViewChange = (nextViewMode: ViewMode) => {
-    router.push(buildInteractionsUrl(1, searchQuery, nextViewMode));
+    router.push(buildInteractionsUrl(1, draftQuery));
   };
 
   const handleClearUnrealAccounts = () => {
@@ -605,7 +610,7 @@ function InteractionsContent() {
         });
 
         await fetchInteractions();
-        router.push(buildInteractionsUrl(1, searchQuery, 'users'));
+        router.push(buildInteractionsUrl(1, searchQuery));
       } catch (err) {
         console.error(err);
         toast({
@@ -650,28 +655,14 @@ function InteractionsContent() {
         : 'No referrers matched the current search.';
 
   const searchHelpText = viewMode === 'users'
-    ? 'Use queries like `referrer:direct`, `referrer:site`, `ip:127.0.0.1`, `activityCount:over100`, `activityCount:under10`, `lastseen:9d`, `type:googlebot`, `type:person`, `type:otherbot`, `sortby:activity`, or `pagesize:50`.'
-    : 'Use free text to filter the grouped results. `pagesize:50` also works in every view.';
+    ? 'Use queries like `viewAs:users`, `referrer:direct`, `referrer:site`, `ip:127.0.0.1`, `activityCount:over100`, `activityCount:under10`, `lastseen:9d`, `type:googlebot`, `type:person`, `type:otherbot`, `sortby:activity`, or `pagesize:50`.'
+    : 'Use queries like `viewAs:page`, `viewAs:bots`, or `viewAs:referrer` to switch modes. Free text filters grouped results, and `pagesize:50` also works in every view.';
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
         <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {VIEW_MODES.map((mode) => (
-          <Button
-            key={mode}
-            type="button"
-            variant={viewMode === mode ? 'default' : 'outline'}
-            className="bg-white capitalize"
-            onClick={() => handleViewChange(mode)}
-          >
-            {mode === 'page' ? 'Pages' : mode}
-          </Button>
-        ))}
       </div>
 
       <div className="space-y-3">
@@ -683,7 +674,7 @@ function InteractionsContent() {
                 value={draftQuery}
                 onChange={(event) => setDraftQuery(event.target.value)}
                 className="border-white bg-white pl-9"
-                placeholder={viewMode === 'users' ? 'referrer:direct ip:127.0.0.1 activityCount:over100 lastseen:9d type:googlebot sortby:activity' : 'search pagesize:50'}
+                placeholder={viewMode === 'users' ? 'viewAs:users referrer:direct ip:127.0.0.1 activityCount:over100 lastseen:9d' : `viewAs:${viewMode} search pagesize:50`}
               />
             </div>
           </form>
@@ -839,11 +830,10 @@ function InteractionsContent() {
                       <p className="break-all text-sm font-semibold">{item.name}</p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                      <Metric label="Last Seen" value={formatTimestamp(item.lastSeen)} icon={Clock} />
                       <Metric label="Requests" value={item.totalRequests} icon={Activity} />
                       <Metric label="Unique People" value={item.uniqueIdentifiers} icon={Users} />
                       <Metric label="Last 24 Hours" value={item.last24Hours} icon={Clock} />
-                      <Metric label="AI Requests" value={item.aiRequests} icon={Bot} />
-                      <Metric label="Human Requests" value={item.humanRequests} icon={UserRound} />
                       <Metric label="Other Bots" value={item.otherBotRequests} icon={Shield} />
                     </div>
                   </CardContent>
@@ -949,11 +939,6 @@ export default function InteractionsPage() {
             <p className="text-sm text-muted-foreground">
               Loading grouped interaction views.
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {VIEW_MODES.map((mode) => (
-              <Skeleton key={mode} className="h-10 w-24" />
-            ))}
           </div>
           <Skeleton className="h-10 w-full max-w-4xl" />
           <div className="space-y-4">
