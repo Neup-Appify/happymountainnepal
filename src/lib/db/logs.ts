@@ -31,6 +31,15 @@ function ensureLogsTable() {
         );
         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_logs_cookieId ON logs(cookieId);
+        CREATE TABLE IF NOT EXISTS timeInvested (
+            id TEXT PRIMARY KEY,
+            activityLogId TEXT NOT NULL UNIQUE,
+            seconds INTEGER NOT NULL DEFAULT 0,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL,
+            FOREIGN KEY (activityLogId) REFERENCES logs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_timeInvested_activityLogId ON timeInvested(activityLogId);
     `);
 
     const tableInfo = db.prepare('PRAGMA table_info(logs)').all() as Array<{ name: string }>;
@@ -50,11 +59,12 @@ function ensureLogsTable() {
     }
 }
 
-export async function createLog(data: Omit<Log, 'id' | 'timestamp'>): Promise<void> {
+export async function createLog(data: Omit<Log, 'id' | 'timestamp'>): Promise<string> {
     try {
         ensureLogsTable();
         const classification = classifyUserAgent(data.userAgent);
         const referrerSource = classifyReferrerSource(data.referrer);
+        const logId = randomUUID();
 
         db.prepare(`
             INSERT INTO logs (
@@ -62,7 +72,7 @@ export async function createLog(data: Omit<Log, 'id' | 'timestamp'>): Promise<vo
                 referrer, userAgent, ipAddress, countryCode, timestamp, isBot, agentCategory, referrerSource, metadata
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-            randomUUID(),
+            logId,
             (data as any).accountId || null,
             data.cookieId,
             data.pageAccessed,
@@ -79,8 +89,10 @@ export async function createLog(data: Omit<Log, 'id' | 'timestamp'>): Promise<vo
             referrerSource,
             JSON.stringify(data.metadata || null)
         );
+        return logId;
     } catch (error) {
         console.error('Failed to create log in SQLite:', error);
+        throw error;
     }
 }
 
@@ -234,6 +246,27 @@ export async function getAllInteractionLogs(): Promise<Log[]> {
     `).all() as any[];
 
     return rows.map(mapLog);
+}
+
+export async function addTimeInvested(activityLogId: string, secondsToAdd: number): Promise<number> {
+    ensureLogsTable();
+
+    const now = new Date().toISOString();
+    db.prepare(`
+        INSERT INTO timeInvested (id, activityLogId, seconds, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(activityLogId) DO UPDATE SET
+            seconds = timeInvested.seconds + excluded.seconds,
+            updatedAt = excluded.updatedAt
+    `).run(randomUUID(), activityLogId, secondsToAdd, now, now);
+
+    const row = db.prepare(`
+        SELECT seconds
+        FROM timeInvested
+        WHERE activityLogId = ?
+    `).get(activityLogId) as { seconds: number } | undefined;
+
+    return row?.seconds || 0;
 }
 
 export async function getLogCount(options?: {

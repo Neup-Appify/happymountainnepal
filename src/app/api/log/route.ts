@@ -5,6 +5,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const {
+            accountId,
             cookieId,
             pageAccessed,
             resourceType,
@@ -36,12 +37,14 @@ export async function POST(request: NextRequest) {
             request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
             request.headers.get('x-real-ip') ||
             undefined;
+        const finalAccountId = accountId || request.cookies.get('account_id')?.value || undefined;
 
         if (!pageAccessed || !resourceType || !finalUserAgent) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        await createLog({
+        const logId = await createLog({
+            accountId: finalAccountId,
             cookieId: finalCookieId,
             pageAccessed,
             resourceType,
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
             metadata,
         });
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, logId });
     } catch (error) {
         console.error('Log creation error:', error);
         return NextResponse.json(

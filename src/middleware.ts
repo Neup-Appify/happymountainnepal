@@ -152,23 +152,25 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   // 6. Logging
   if (shouldLog) {
     const resourceType = getResourceType(pathname);
-    event.waitUntil(
-      fetch(`${origin}/api/log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cookieId: accountId,
-          pageAccessed: pathname,
-          resourceType,
-          method,
-          statusCode: response.status,
-          referrer,
-          userAgent,
-          ipAddress: ip,
-          isBot: isBotRequest,
-        }),
-      }).catch(err => console.error('Error logging request:', err))
-    );
+    if (resourceType !== 'page') {
+      event.waitUntil(
+        fetch(`${origin}/api/log`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cookieId: accountId,
+            pageAccessed: pathname,
+            resourceType,
+            method,
+            statusCode: response.status,
+            referrer,
+            userAgent,
+            ipAddress: ip,
+            isBot: isBotRequest,
+          }),
+        }).catch(err => console.error('Error logging request:', err))
+      );
+    }
   }
 
   return response;
