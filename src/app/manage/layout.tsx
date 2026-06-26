@@ -78,9 +78,9 @@ export default function ManageLayout({
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
                                             <SidebarMenuItem>
-                                                <SidebarMenuButton href="/manage/accounts" isActive={pathname.startsWith('/manage/accounts')} tooltip="Users">
+                                                <SidebarMenuButton href="/manage/interactions" isActive={pathname.startsWith('/manage/interactions')} tooltip="Interactions">
                                                     <Users />
-                                                    <span>Users</span>
+                                                    <span>Interactions</span>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
                                             <SidebarMenuItem>

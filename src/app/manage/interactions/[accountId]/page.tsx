@@ -90,9 +90,9 @@ export default function AccountActivityPage({ params }: ActivityPageProps) {
       <CardHeader>
         <div className='mb-4'>
             <Button asChild variant="outline" size="sm">
-                <Link href="/manage/accounts">
+                <Link href="/manage/interactions">
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to All Accounts
+                    Back to All Interactions
                 </Link>
             </Button>
         </div>

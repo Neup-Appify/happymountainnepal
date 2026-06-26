@@ -91,6 +91,6 @@ export async function saveAccountAction(data: Omit<Account, 'createdAt'> & { cre
 
 export async function clearUnrealAccountsAction() {
   const result = await clearUnrealAccounts();
-  revalidatePath('/manage/accounts');
+  revalidatePath('/manage/interactions');
   return result;
 }

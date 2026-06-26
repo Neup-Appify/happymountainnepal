@@ -64,7 +64,7 @@ export async function getActivitiesByAccountId(accountId: string): Promise<Activ
         return rows.map(row => ({ ...row, activityInfo: row.activityInfo ? JSON.parse(row.activityInfo) : {} })) as Activity[];
     } catch (error: any) {
         console.error(`Error fetching activities for account ${accountId}:`, error);
-        await logError({ message: `Failed to fetch activities for account ${accountId}: ${error.message}`, stack: error.stack, pathname: `/manage/accounts/${accountId}` });
+        await logError({ message: `Failed to fetch activities for account ${accountId}: ${error.message}`, stack: error.stack, pathname: `/manage/interactions/${accountId}` });
         throw new Error("Could not fetch activities from the database.");
     }
 }
@@ -123,7 +123,7 @@ export async function clearUnrealAccounts(): Promise<{ deletedCount: number }> {
         await logError({
             message: `Failed to clear unreal accounts: ${error.message}`,
             stack: error.stack,
-            pathname: '/manage/accounts',
+            pathname: '/manage/interactions',
         });
         throw new Error("Could not clear unreal accounts.");
     }

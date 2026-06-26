@@ -295,6 +295,7 @@ export interface Redirect {
 
 export interface Log {
   id: string;
+  accountId?: string;
   cookieId: string; // The temp_account cookie ID
   pageAccessed: string; // The path that was accessed
   resourceType: 'page' | 'api' | 'static' | 'redirect'; // Type of resource

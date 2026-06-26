@@ -225,6 +225,17 @@ export async function getLogsByIdentifier(identifier: string): Promise<Log[]> {
     return rows.map(mapLog);
 }
 
+export async function getAllInteractionLogs(): Promise<Log[]> {
+    ensureLogsTable();
+    const rows = db.prepare(`
+        SELECT *
+        FROM logs
+        ORDER BY timestamp DESC
+    `).all() as any[];
+
+    return rows.map(mapLog);
+}
+
 export async function getLogCount(options?: {
     cookieId?: string;
     resourceType?: 'page' | 'api' | 'static' | 'redirect';
