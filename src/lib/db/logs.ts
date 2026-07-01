@@ -251,6 +251,16 @@ export async function getAllInteractionLogs(): Promise<Log[]> {
 export async function addTimeInvested(activityLogId: string, secondsToAdd: number): Promise<number> {
     ensureLogsTable();
 
+    const activityLog = db.prepare(`
+        SELECT isBot
+        FROM logs
+        WHERE id = ?
+    `).get(activityLogId) as { isBot: number } | undefined;
+
+    if (!activityLog || Boolean(activityLog.isBot)) {
+        return 0;
+    }
+
     const now = new Date().toISOString();
     db.prepare(`
         INSERT INTO timeInvested (id, activityLogId, seconds, createdAt, updatedAt)

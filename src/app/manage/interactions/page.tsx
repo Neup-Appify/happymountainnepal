@@ -742,7 +742,10 @@ function InteractionsContent() {
                           href={`/manage/interactions/${encodeURIComponent(user.id)}`}
                           className="break-all font-mono text-sm underline-offset-4 hover:underline"
                         >
-                          {user.identifier} ({formatDurationFromSeconds(user.timeInvestedSeconds)})
+                          {user.identifier}
+                          {user.userAgentCategory === 'Person'
+                            ? ` (${formatDurationFromSeconds(user.timeInvestedSeconds)})`
+                            : ''}
                         </Link>
                       </div>
                       <div className="flex flex-wrap gap-2">
