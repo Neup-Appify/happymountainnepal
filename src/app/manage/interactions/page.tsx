@@ -194,6 +194,24 @@ function formatTimestamp(timestamp: string) {
   return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
 }
 
+function formatDurationFromSeconds(totalSeconds: number) {
+  if (totalSeconds <= 0) return '0 seconds';
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours} hours ${minutes} minutes`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes} minutes ${seconds} seconds`;
+  }
+
+  return `${seconds} seconds`;
+}
+
 function extractBotName(log: Log) {
   const category = getAgentCategory(log);
   if (category && category !== 'Other Bot') {
@@ -724,7 +742,7 @@ function InteractionsContent() {
                           href={`/manage/interactions/${encodeURIComponent(user.id)}`}
                           className="break-all font-mono text-sm underline-offset-4 hover:underline"
                         >
-                          {user.identifier}
+                          {user.identifier} ({formatDurationFromSeconds(user.timeInvestedSeconds)})
                         </Link>
                       </div>
                       <div className="flex flex-wrap gap-2">

@@ -139,9 +139,17 @@ export async function getUsersSummary(): Promise<DisplayUser[]> {
         registeredUsers.set(account.id, account);
     });
 
-    const logs = db.prepare('SELECT * FROM logs ORDER BY timestamp DESC').all() as any[];
+    const logs = db.prepare(`
+        SELECT
+            logs.*,
+            COALESCE(timeInvested.seconds, 0) AS timeInvestedSeconds
+        FROM logs
+        LEFT JOIN timeInvested ON timeInvested.activityLogId = logs.id
+        ORDER BY logs.timestamp DESC
+    `).all() as Array<any & { timeInvestedSeconds: number }>;
     const userActivityMap = new Map<string, {
         activityCount: number;
+        timeInvestedSeconds: number;
         lastSeen: string;
         firstSeen: string;
         identifier: string;
@@ -161,6 +169,7 @@ export async function getUsersSummary(): Promise<DisplayUser[]> {
             const agentCategory = log.agentCategory || classifyUserAgent(log.userAgent).agentCategory;
             userActivityMap.set(id, {
                 activityCount: 0,
+                timeInvestedSeconds: 0,
                 lastSeen: log.timestamp,
                 firstSeen: log.timestamp,
                 identifier: account ? account.email : log.cookieId,
@@ -174,6 +183,7 @@ export async function getUsersSummary(): Promise<DisplayUser[]> {
 
         const userData = userActivityMap.get(id)!;
         userData.activityCount += 1;
+        userData.timeInvestedSeconds += Number(log.timeInvestedSeconds || 0);
         userData.firstSeen = log.timestamp;
     });
 

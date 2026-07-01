@@ -22,3 +22,10 @@
 - [ ] Add actual departure seat inventory if the business wants remaining-seat urgency
 - [ ] Connect inquiry follow-up to a real email automation sequence
 - [ ] Expand each trek hub into deeper article clusters over time
+
+## Code follow-ups
+
+- [ ] Fix `src/app/api/log/time-invested/route.ts` so `secondsToAdd` validates the request payload instead of always coercing to `10`
+- [ ] Add or restore documentation guidance file `documentation.guide.md` so code/document updates have a canonical reference
+- [ ] Document `src/lib/client-logger.tsx` page-view and time-invested tracking behavior
+- [ ] Document `src/app/api/log/time-invested/route.ts` request contract and accumulation behavior

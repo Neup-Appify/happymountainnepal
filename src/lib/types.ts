@@ -204,6 +204,7 @@ export type ChatbotPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'to
 export interface DisplayUser {
   id: string;
   activityCount: number;
+  timeInvestedSeconds: number;
   lastSeen: string;
   firstSeen: string;
   identifier: string;
