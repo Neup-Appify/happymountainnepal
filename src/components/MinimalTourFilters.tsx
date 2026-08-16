@@ -37,7 +37,7 @@ export function MinimalTourFilters({ filters, setFilters, regions }: TourFilters
       <form onSubmit={handleSearchSubmit} className="relative w-full">
         <Input
           type="text"
-          placeholder="Search for tours, e.g., 'Everest'"
+          placeholder="Search by title first, then description"
           value={filters.search}
           onChange={(e) => {
             const next = { ...filters, search: e.target.value };

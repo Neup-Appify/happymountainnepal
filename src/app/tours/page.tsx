@@ -69,13 +69,39 @@ function ToursPageContent() { // Renamed to ToursPageContent
 
   const filteredTours = useMemo(() => {
     if (!tours) return [];
-    return tours.filter((tour: Tour) => {
-      const matchesSearch = filters.search === '' || tour.name.toLowerCase().includes(filters.search.toLowerCase());
-      const matchesRegion = filters.region === '' || (Array.isArray(tour.region) && tour.region.includes(filters.region));
-      const selectedDifficulties = filters.hardship.flatMap(h => hardshipToDifficulties[h] || []);
-      const matchesHardship = filters.hardship.length === 0 || selectedDifficulties.includes(tour.difficulty);
-      return matchesSearch && matchesRegion && matchesHardship;
-    });
+    const normalizedSearch = filters.search.trim().toLowerCase();
+
+    return tours
+      .filter((tour: Tour) => {
+        const keywordText = Array.isArray(tour.searchKeywords) ? tour.searchKeywords.join(' ').toLowerCase() : '';
+        const matchesSearch = normalizedSearch === '' || (
+          tour.name.toLowerCase().includes(normalizedSearch) ||
+          tour.description.toLowerCase().includes(normalizedSearch) ||
+          keywordText.includes(normalizedSearch)
+        );
+        const matchesRegion = filters.region === '' || (Array.isArray(tour.region) && tour.region.includes(filters.region));
+        const selectedDifficulties = filters.hardship.flatMap(h => hardshipToDifficulties[h] || []);
+        const matchesHardship = filters.hardship.length === 0 || selectedDifficulties.includes(tour.difficulty);
+        return matchesSearch && matchesRegion && matchesHardship;
+      })
+      .sort((left, right) => {
+        if (!normalizedSearch) return left.name.localeCompare(right.name);
+
+        const getRank = (tour: Tour) => {
+          if (tour.name.toLowerCase().includes(normalizedSearch)) return 0;
+          if (tour.description.toLowerCase().includes(normalizedSearch)) return 1;
+
+          const keywordText = Array.isArray(tour.searchKeywords) ? tour.searchKeywords.join(' ').toLowerCase() : '';
+          if (keywordText.includes(normalizedSearch)) return 2;
+
+          return 3;
+        };
+
+        const rankDifference = getRank(left) - getRank(right);
+        if (rankDifference !== 0) return rankDifference;
+
+        return left.name.localeCompare(right.name);
+      });
   }, [filters, tours]);
 
   return (

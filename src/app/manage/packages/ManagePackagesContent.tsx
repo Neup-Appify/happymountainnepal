@@ -184,7 +184,7 @@ export function ManagePackagesContent({ status = 'published' }: ManagePackagesCo
                     </div>
                     <div className="flex-1 relative">
                         <Input
-                            placeholder="Search by name..."
+                            placeholder="Search by title first, then description..."
                             className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0 placeholder:text-muted-foreground text-base"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}

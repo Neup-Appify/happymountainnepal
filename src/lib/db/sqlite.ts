@@ -583,6 +583,7 @@ export function getPosts(options?: {
   let query = 'SELECT * FROM posts';
   const conditions: string[] = [];
   const params: any[] = [];
+  const orderParams: any[] = [];
 
   if (options?.status) {
     conditions.push('status = ?');
@@ -590,9 +591,10 @@ export function getPosts(options?: {
   }
 
   if (options?.search) {
-    conditions.push('(title LIKE ? OR content LIKE ? OR searchKeywords LIKE ?)');
+    conditions.push('(title LIKE ? OR excerpt LIKE ? OR content LIKE ? OR searchKeywords LIKE ?)');
     const term = `%${options.search}%`;
-    params.push(term, term, term);
+    params.push(term, term, term, term);
+    orderParams.push(term, term, term, term);
   }
 
   if (options?.tags && options.tags.length > 0) {
@@ -605,14 +607,31 @@ export function getPosts(options?: {
     query += ' WHERE ' + conditions.join(' AND ');
   }
 
-  query += ' ORDER BY createdAt DESC LIMIT ? OFFSET ?';
+  const countParams = [...params];
+
+  if (options?.search) {
+    query += `
+      ORDER BY
+        CASE
+          WHEN title LIKE ? THEN 0
+          WHEN excerpt LIKE ? OR content LIKE ? THEN 1
+          WHEN searchKeywords LIKE ? THEN 2
+          ELSE 3
+        END,
+        createdAt DESC
+    `;
+  } else {
+    query += ' ORDER BY createdAt DESC';
+  }
+
+  params.push(...orderParams);
+  query += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = db.prepare(query).all(...params) as PostDB[];
 
   // Get total count
   let countQuery = 'SELECT COUNT(*) as count FROM posts';
-  const countParams = params.slice(0, params.length - 2);
 
   if (conditions.length > 0) {
     countQuery += ' WHERE ' + conditions.join(' AND ');
@@ -1020,6 +1039,7 @@ export function getPackages(options?: {
   let query = 'SELECT * FROM packages';
   const conditions: string[] = [];
   const params: any[] = [];
+  const orderParams: any[] = [];
 
   if (options?.status) {
     conditions.push('status = ?');
@@ -1045,20 +1065,38 @@ export function getPackages(options?: {
     conditions.push('(name LIKE ? OR description LIKE ? OR searchKeywords LIKE ?)');
     const term = `%${options.search}%`;
     params.push(term, term, term);
+    orderParams.push(term, term, term);
   }
 
   if (conditions.length > 0) {
     query += ' WHERE ' + conditions.join(' AND ');
   }
 
-  query += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+  const countParams = [...params];
+
+  if (options?.search) {
+    query += `
+      ORDER BY
+        CASE
+          WHEN name LIKE ? THEN 0
+          WHEN description LIKE ? THEN 1
+          WHEN searchKeywords LIKE ? THEN 2
+          ELSE 3
+        END,
+        name ASC
+    `;
+  } else {
+    query += ' ORDER BY name ASC';
+  }
+
+  params.push(...orderParams);
+  query += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const rows = db.prepare(query).all(...params) as PackageDB[];
 
   // Get total count
   let countQuery = 'SELECT COUNT(*) as count FROM packages';
-  const countParams = params.slice(0, params.length - 2);
 
   if (conditions.length > 0) {
     countQuery += ' WHERE ' + conditions.join(' AND ');
