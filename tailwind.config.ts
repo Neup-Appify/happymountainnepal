@@ -18,8 +18,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        body: ['Outfit', 'sans-serif'],
-        headline: ['Playfair Display', 'serif'],
+        body: ['Georgia', 'Times New Roman', 'serif'],
+        headline: ['Playfair Display', 'Georgia', 'serif'],
         code: ['monospace'],
       },
       colors: {

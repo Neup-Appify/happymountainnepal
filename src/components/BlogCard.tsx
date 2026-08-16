@@ -34,7 +34,7 @@ export function BlogCard({ post }: BlogCardProps) {
       <CardContent className="p-4 flex-grow">
         {/* Clickable Title */}
         <Link href={`/blog/${post.slug}`}>
-          <CardTitle className="text-lg font-bold !font-headline mb-2 leading-tight hover:text-primary transition-colors cursor-pointer">
+          <CardTitle className="text-lg font-bold mb-2 leading-tight hover:text-primary transition-colors cursor-pointer">
             {post.title}
           </CardTitle>
         </Link>
