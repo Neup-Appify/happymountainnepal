@@ -350,10 +350,9 @@ function filterAndSortUsers(users: DisplayUser[], rawQuery: string) {
 function buildPageSummaries(logs: Log[]) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   const summaries = new Map<string, PageSummary>();
+  const identifiersByPath = new Map<string, Set<string>>();
 
   for (const log of logs) {
-    if (log.resourceType !== 'page') continue;
-
     const key = log.pageAccessed || '(unknown page)';
     const category = getAgentCategory(log);
     const identifier = getLogIdentifier(log);
@@ -373,26 +372,27 @@ function buildPageSummaries(logs: Log[]) {
         otherBotRequests: !isHumanCategory(category) && !isAiCategory(category) ? 1 : 0,
         lastSeen: timestamp,
       });
-      continue;
+    } else {
+      current.totalRequests += 1;
+      if (timestampValue >= cutoff) current.last24Hours += 1;
+      if (isAiCategory(category)) current.aiRequests += 1;
+      else if (isHumanCategory(category)) current.humanRequests += 1;
+      else current.otherBotRequests += 1;
+      if (new Date(timestamp).getTime() > new Date(current.lastSeen).getTime()) {
+        current.lastSeen = timestamp;
+      }
     }
 
-    current.totalRequests += 1;
-    if (timestampValue >= cutoff) current.last24Hours += 1;
-    if (isAiCategory(category)) current.aiRequests += 1;
-    else if (isHumanCategory(category)) current.humanRequests += 1;
-    else current.otherBotRequests += 1;
-    if (new Date(timestamp).getTime() > new Date(current.lastSeen).getTime()) {
-      current.lastSeen = timestamp;
-    }
+    const existingIdentifiers = identifiersByPath.get(key) || new Set<string>();
+    existingIdentifiers.add(identifier);
+    identifiersByPath.set(key, existingIdentifiers);
   }
 
-  for (const summary of summaries.values()) {
-    const identifiers = new Set(
-      logs
-        .filter((log) => log.resourceType === 'page' && (log.pageAccessed || '(unknown page)') === summary.pageAccessed)
-        .map((log) => getLogIdentifier(log)),
-    );
-    summary.uniqueIdentifiers = identifiers.size;
+  for (const [path, identifiers] of identifiersByPath.entries()) {
+    const summary = summaries.get(path);
+    if (summary) {
+      summary.uniqueIdentifiers = identifiers.size;
+    }
   }
 
   return Array.from(summaries.values()).sort((a, b) => b.totalRequests - a.totalRequests);
@@ -643,7 +643,7 @@ function InteractionsContent() {
   const heading = viewMode === 'users'
     ? 'Interactions by User'
     : viewMode === 'page'
-      ? 'Interactions by Page'
+      ? 'Interactions by Path'
       : viewMode === 'bots'
         ? 'Interactions by Bot'
         : 'Interactions by Referrer';
@@ -651,7 +651,7 @@ function InteractionsContent() {
   const description = viewMode === 'users'
     ? 'Current identifier view, grouped by user or visitor.'
     : viewMode === 'page'
-      ? 'Grouped by page path with 24-hour, AI, and human traffic counts.'
+      ? 'Grouped by request path with 24-hour, AI, and human traffic counts.'
       : viewMode === 'bots'
         ? 'Grouped by detected bot name with request volume and page spread.'
         : 'Grouped by referring source with unique visitor and request counts.';
@@ -659,7 +659,7 @@ function InteractionsContent() {
   const emptyTitle = viewMode === 'users'
     ? 'No Users Found'
     : viewMode === 'page'
-      ? 'No Pages Found'
+      ? 'No Paths Found'
       : viewMode === 'bots'
         ? 'No Bots Found'
         : 'No Referrers Found';
@@ -667,7 +667,7 @@ function InteractionsContent() {
   const emptyDescription = viewMode === 'users'
     ? 'No identifiers matched the current search.'
     : viewMode === 'page'
-      ? 'No pages matched the current search.'
+      ? 'No request paths matched the current search.'
       : viewMode === 'bots'
         ? 'No bots matched the current search.'
         : 'No referrers matched the current search.';

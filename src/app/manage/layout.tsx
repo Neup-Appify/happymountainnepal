@@ -2,7 +2,7 @@
 'use client';
 
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarProvider, SidebarMenuItem } from "@/components/ui/sidebar";
-import { LayoutGrid, Mail, Users, Mountain, ArrowLeft, UsersRound, Package, Handshake, ShieldAlert, PictureInPicture, PenSquare, Star, UserCircle2, Landmark, MessageSquare, LogOut, Layout, ArrowRightLeft, Backpack, CreditCard, ListTodo, MapPin } from "lucide-react";
+import { LayoutGrid, Mail, Users, Mountain, ArrowLeft, UsersRound, Package, Handshake, ShieldAlert, PictureInPicture, PenSquare, Star, UserCircle2, Landmark, MessageSquare, LogOut, Layout, ArrowRightLeft, Backpack, CreditCard, ListTodo, MapPin, Link2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePathname } from "next/navigation";
 import { AutoHideScrollbar } from "@/components/ui/AutoHideScrollbar";
@@ -141,6 +141,12 @@ export default function ManageLayout({
                                                 <SidebarMenuButton href="/manage/redirects" isActive={pathname.startsWith('/manage/redirects')} tooltip="Redirects">
                                                     <ArrowRightLeft />
                                                     <span>Redirects</span>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                            <SidebarMenuItem>
+                                                <SidebarMenuButton href="/manage/links" isActive={pathname.startsWith('/manage/links')} tooltip="Links">
+                                                    <Link2 />
+                                                    <span>Links</span>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
                                             <SidebarMenuItem>

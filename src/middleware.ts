@@ -27,6 +27,14 @@ function getResourceType(pathname: string): 'page' | 'api' | 'static' {
   return 'page';
 }
 
+function shouldSkipLogging(pathname: string) {
+  return (
+    pathname.startsWith('/_next') ||
+    pathname === '/favicon.ico' ||
+    pathname.startsWith('/api/log')
+  );
+}
+
 // Simple cookie-based authentication
 async function isManagerAuthenticated(request: NextRequest): Promise<boolean> {
   const username = request.cookies.get('manager_username')?.value;
@@ -75,7 +83,7 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   // Add the temp account ID to the request headers to be accessible by server components
   requestHeaders.set('x-temp-account-id', accountId);
 
-  const shouldLog = !pathname.startsWith('/_next') && pathname !== '/favicon.ico';
+  const shouldLog = !shouldSkipLogging(pathname);
 
   // Create the base response with the new headers
   const response = NextResponse.next({
@@ -180,6 +188,6 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
