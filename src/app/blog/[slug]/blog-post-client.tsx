@@ -1,11 +1,8 @@
 
-'use client';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Timestamp } from '@/lib/timestamp';
 import type { BlogPost } from '@/lib/types';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useMemo } from 'react';
 import { Chatbot } from '@/components/Chatbot';
 import { getBlogChatMessage } from '@/lib/chat-messages';
 
@@ -15,8 +12,14 @@ interface BlogPostClientProps {
 }
 
 export default function BlogPostClient({ post, tempUserId }: BlogPostClientProps) {
-  const displayDate = post.date instanceof Timestamp ? post.date.toDate().toLocaleDateString() : new Date(post.date).toLocaleDateString();
-  const isoDatePublished = post.date instanceof Timestamp ? post.date.toDate().toISOString() : new Date(post.date).toISOString();
+  const publishedDate = post.date instanceof Timestamp ? post.date.toDate() : new Date(post.date);
+  const displayDate = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(publishedDate);
+  const isoDatePublished = publishedDate.toISOString();
   const isoDateModified = isoDatePublished; // Assuming no separate modified date for now
 
   const hasImage = Boolean(post.image && post.image.trim() !== '');
@@ -50,11 +53,11 @@ export default function BlogPostClient({ post, tempUserId }: BlogPostClientProps
     }
   };
 
-  const chatMessages = useMemo(() => getBlogChatMessage(post.title), [post.title]);
+  const chatMessages = getBlogChatMessage(post.title);
 
   return (
     <>
-      <article>
+      <article className="blog-content">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSchema) }}

@@ -195,6 +195,10 @@
     @apply text-primary hover:underline font-medium;
   }
 
+  .blog-content a {
+    @apply underline underline-offset-4;
+  }
+
   .formatted-content img {
     @apply rounded-lg my-8 max-w-full h-auto shadow-md;
   }
