@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "setup": "rm -rf core && rm -rf logica && rm -rf neup.core && rm -rf neup.logica && git clone https://github.com/neupgroup/neup.core && git clone https://github.com/neupgroup/neup.logica && mv neup.core core && mv neup.logica logica",
+
+    "prebuild": "npm run setup",
+    "predev": "npm run setup",
+
     "dev": "next dev --turbopack -p 4277 --experimental-https",
     "build": "next build",
     "start": "next start -p 4277",

@@ -8,7 +8,6 @@ import { ProgressBar } from '@/components/layout/ProgressBar';
 import { HeaderV3 as Header } from '@/components/layout/HeaderV3';
 import 'quill/dist/quill.snow.css'; // Import Quill's CSS
 import { ConditionalFooter } from '@/components/layout/ConditionalFooter';
-import { PageViewTracker } from '@/lib/client-logger';
 import { AdminControlProvider } from '@/context/AdminControlContext';
 
 export const metadata: Metadata = {
@@ -70,6 +69,14 @@ export default async function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet" />
+        <script
+          async
+          src="https://localhost:26259/analytics/bridge/sdk.v1/record"
+          data-project-id="cmt1ve8im0000gc9kgleao4wh"
+          data-endpoint="https://localhost:26259/analytics/bridge/api.v1/activity?project=cmt1ve8im0000gc9kgleao4wh"
+          data-mode="activity"
+          data-collect="pageview,requests"
+        />
       </head>
       <body className="font-body antialiased">
         <ProgressBar />
@@ -89,7 +96,6 @@ export default async function RootLayout({
           </AdminControlProvider>
           {/* Chatbot removed from here, will be added to specific pages */}
           <Toaster />
-          <PageViewTracker />
         </WishlistProvider>
       </body>
     </html>
